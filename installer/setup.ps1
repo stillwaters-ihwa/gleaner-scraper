@@ -35,7 +35,38 @@ function RefreshPath { $env:Path = [Environment]::GetEnvironmentVariable('Path',
 Say "`n  Gleaner setup" 'Red'
 Say "  Everything Gleaner needs, in one run.`n"
 
-if (-not (Test-Path (Join-Path $src 'manifest.json'))) { Say "The 'extension' folder is missing next to this file. Unzip the whole Gleaner-Setup folder first, then run Install Gleaner again." 'Red'; exit 1 }
+if (-not (Test-Path (Join-Path $src 'manifest.json'))) {
+  $repo = Split-Path -Parent $here
+  if ((Test-Path (Join-Path $repo 'package.json')) -and (Test-Path (Join-Path $repo 'wxt.config.ts'))) {
+    # Gleaner's source code (a GitHub download or a clone): build it first, then install that build
+    $built = Join-Path $repo '.output\chrome-mv3'
+    if (-not (Test-Path (Join-Path $built 'manifest.json'))) {
+      Say "  This is Gleaner's source code, so Gleaner is built first (a few minutes, needs internet)." 'Yellow'
+      RefreshPath
+      if (-not (Has 'node')) {
+        if (-not (Has 'winget')) { Say "  Node.js is needed to build Gleaner. Install it from https://nodejs.org, then run Install Gleaner again." 'Red'; exit 1 }
+        Say '  Installing Node.js...'
+        winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+        RefreshPath
+      }
+      Say '  Downloading the parts Gleaner is built from (npm ci)...'
+      Push-Location $repo
+      cmd /c "npm ci --no-audit --no-fund --loglevel=error"
+      if ($LASTEXITCODE -ne 0) { Pop-Location; Say "  The download failed (npm ci). Check the internet connection and run Install Gleaner again." 'Red'; exit 1 }
+      Say '  Building Gleaner (npm run build)...'
+      cmd /c "npm run build --silent" | Out-Null
+      $code = $LASTEXITCODE
+      Pop-Location
+      if ($code -ne 0 -or -not (Test-Path (Join-Path $built 'manifest.json'))) { Say "  The build failed. Run 'npm run build' in $repo to see why." 'Red'; exit 1 }
+      Say '  Built.'
+    }
+    $src = $built
+  } elseif ($here -match '\\Temp\d*_|\\AppData\\Local\\Temp\\') {
+    Say "Install Gleaner is running from inside the ZIP. Right-click the ZIP, choose Extract All, then run Install Gleaner from the unzipped folder." 'Red'; exit 1
+  } else {
+    Say "The 'extension' folder is missing next to this file. Unzip the whole Gleaner-Setup folder first, then run Install Gleaner again." 'Red'; exit 1
+  }
+}
 $version = (Get-Content (Join-Path $src 'manifest.json') -Raw | ConvertFrom-Json).version
 
 # 1. The extension, in one fixed place

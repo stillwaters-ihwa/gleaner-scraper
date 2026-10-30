@@ -1,6 +1,12 @@
 # Gleaner
 
-**Get it:** download `Gleaner-Setup-<version>.zip` from this repository's Releases, unzip it, double-click **Install Gleaner** and follow **Gleaner Guide.html**. Windows, Edge or Chrome.
+## Install (Windows, Edge or Chrome)
+
+1. **[Download Gleaner-Setup-0.1.0.zip](https://github.com/stillwaters-ihwa/gleaner-scraper/raw/main/download/Gleaner-Setup-0.1.0.zip)** (the extension, installer, uninstaller and guide).
+2. Right-click the ZIP and choose **Extract All**.
+3. Open the unzipped `Gleaner-Setup` folder and double-click **Install Gleaner**. Follow **Gleaner Guide.html** for the last two clicks in the browser.
+
+Downloaded the source instead (Code > Download ZIP)? Double-click **Install Gleaner** in that folder: it builds Gleaner first (a few minutes, needs internet), then installs it the same way. To remove Gleaner, double-click **Uninstall Gleaner**.
 
 A point-and-click web scraper that lives in your browser's side panel (Chrome, Edge and Brave).
 Everything runs locally on pages you can already open, including ones you're signed in to.
