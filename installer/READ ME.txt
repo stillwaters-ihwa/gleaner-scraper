@@ -1,0 +1,24 @@
+Gleaner setup (Windows)
+
+Open "Gleaner Guide.html" for the full guide with pictures.
+
+1. Unzip this folder (right-click the ZIP > Extract All).
+2. Double-click "Install Gleaner".
+   It puts Gleaner in place, installs the tools Gleaner's helper uses (Node.js, Python,
+   yt-dlp, ffmpeg; it asks first), installs Scrapling for the Site crawler, sets up the
+   helper, and opens your browser's extensions page with Gleaner's folder copied.
+3. On that page: turn on Developer mode, click Load unpacked, paste the folder
+   (Ctrl+V in the folder window's address bar, then Enter) and click Select Folder.
+   Browsers only let a person do this step; the setup window shows it again.
+
+Updating: run "Install Gleaner" from the newer version, then click Reload on Gleaner
+on the extensions page.
+
+Removing: double-click "Uninstall Gleaner". It removes Gleaner's files, its helper, the
+Scrapling environment and the helper's browser registration, then opens the extensions
+page: click Remove on Gleaner there.
+
+Your browser may show a note about developer-mode extensions when it starts. That is
+normal for extensions that don't come from a web store.
+
+Saving YouTube videos is for personal use.

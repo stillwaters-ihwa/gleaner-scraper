@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gleaner Guide</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0b10; --surface: #16131b; --surface-2: #201b27; --line: #342b3c;
+    --text: #eeeaf2; --muted: #a89eb4; --accent: #c8202c; --accent-text: #ff6b73;
+    --enhancer: #f2b33d; --emitter: #ff7a45; --manipulator: #7bd88f; --transmuter: #b98cff; --conjurer: #4fc3f7; --specialist: #f06fb1;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { color-scheme: light; --bg: #f4f3f6; --surface: #fff; --surface-2: #eceaf0; --line: #d8d4de; --text: #17131c; --muted: #5e5669; --accent: #b81c28; --accent-text: #a3141f;
+      --enhancer: #a86b00; --emitter: #c24a12; --manipulator: #2c8a45; --transmuter: #6c3fd1; --conjurer: #0b78a8; --specialist: #b8287a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: center; gap: 14px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+  header svg { width: 52px; height: 52px; color: var(--accent-text); flex: none; }
+  h1 { margin: 0; font: 900 30px/1.1 "Segoe UI Black", "Arial Black", system-ui, sans-serif; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  h2 { margin: 40px 0 10px; font: 900 21px/1.2 "Segoe UI Black", "Arial Black", system-ui, sans-serif; }
+  h3 { margin: 22px 0 6px; font-size: 16px; }
+  p, li { max-width: 68ch; }
+  a { color: var(--accent-text); }
+  code, kbd { font: 13px Consolas, ui-monospace, monospace; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+  nav a { text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13.5px; }
+  nav a:hover, nav a:focus-visible { border-color: var(--accent-text); }
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 12px 0; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 12px 14px 12px 54px; margin: 8px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 800; display: grid; place-items: center; }
+  .note { border-left: 3px solid var(--accent-text); background: var(--surface); padding: 10px 14px; border-radius: 0 10px 10px 0; color: var(--text); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 14px 0; }
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  figure img { display: block; width: 100%; height: 340px; object-fit: cover; object-position: top; }
+  figcaption { padding: 8px 12px; font-size: 13px; color: var(--muted); }
+  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0; }
+  .group { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; border-top: 3px solid var(--c); }
+  .group b { display: block; }
+  .group span { color: var(--muted); font-size: 13.5px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+  td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg viewBox="0 0 64 64" aria-hidden="true" fill="currentColor"><g fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="square"><path d="M27 20 18 12 12 4"/><path d="M26 25 14 22 6 16"/><path d="M24 34 12 36 4 44"/><path d="M25 42 16 50 12 60"/><path d="M37 20 46 12 52 4"/><path d="M38 25 50 22 58 16"/><path d="M40 34 52 36 60 44"/><path d="M39 42 48 50 52 60"/></g><circle cx="32" cy="22" r="6.5"/><path d="M32 27.5 42 33.25V44.75L32 50.5 22 44.75V33.25Z"/></svg>
+    <div>
+      <h1>Gleaner Guide</h1>
+      <p>Install, use, update and remove Gleaner, the web scraper in your browser's side panel.</p>
+    </div>
+  </header>
+  <nav aria-label="Sections">
+    <a href="#install">Install</a><a href="#first">First use</a><a href="#tools">The tools</a><a href="#extras">YouTube and Site crawler</a><a href="#update">Update</a><a href="#remove">Uninstall</a><a href="#help">If something goes wrong</a>
+  </nav>
+
+  <h2 id="install">Install (Windows, about 5 minutes)</h2>
+  <ol class="steps">
+    <li><b>Unzip the whole folder.</b> Right-click the <code>Gleaner-Setup</code> ZIP, choose <b>Extract All</b>, then open the <code>Gleaner-Setup</code> folder. Running it from inside the ZIP doesn't work.</li>
+    <li><b>Double-click <code>Install Gleaner</code>.</b> A window opens and:
+      <ul>
+        <li>puts Gleaner in <code>%LOCALAPPDATA%\Gleaner\extension</code></li>
+        <li>installs Node.js, Python, yt-dlp and ffmpeg if they're missing (it asks first; type Y)</li>
+        <li>installs Scrapling for the Site crawler</li>
+        <li>sets up Gleaner's helper</li>
+        <li>opens your browser's extensions page with Gleaner's folder copied</li>
+      </ul>
+      If Windows asks "Do you want to allow this app to make changes", that's winget installing the tools: choose Yes.</li>
+    <li><b>Turn on Developer mode</b> on the extensions page (a switch on the left in Edge, top right in Chrome).</li>
+    <li><b>Click Load unpacked.</b> In the folder window, click the address bar at the top, press <kbd>Ctrl</kbd>+<kbd>V</kbd> and <kbd>Enter</kbd>, then click <b>Select Folder</b>. Gleaner appears in the list.</li>
+    <li><b>Pin Gleaner:</b> click the puzzle piece in the toolbar, then the pin next to Gleaner. Click the spider icon to open the side panel.</li>
+  </ol>
+  <p class="note">Browsers only let a person add an extension that doesn't come from a web store, so steps 3 and 4 are clicks you make once. Edge or Chrome may mention "developer mode extensions" when it starts: that's normal.</p>
+
+  <h2 id="first">First use</h2>
+  <p>Open a website, click the spider icon, and pick a tool. The first time a tool reads a page, the browser asks whether Gleaner may read websites: choose <b>Allow</b>. Everything runs on your computer; your data stays in the browser.</p>
+  <div class="shots">
+    <figure><img src="guide/home.png" alt="Gleaner's home screen with the tools grouped by Nen type"><figcaption>Home: tools grouped by Nen type</figcaption></figure>
+    <figure><img src="guide/page-capture.png" alt="The Page capture tool"><figcaption>Page capture</figcaption></figure>
+    <figure><img src="guide/site-crawler.png" alt="The Site crawler tool"><figcaption>Site crawler (Scrapling)</figcaption></figure>
+  </div>
+  <p>Results open in <b>Data</b>, where you can sort, search, edit and export them (CSV, Excel, JSON, Google Sheets-ready). Save a setup as a <b>recipe</b> to run it again, or a <b>monitor</b> to run it on a schedule.</p>
+
+  <h2 id="tools">The tools</h2>
+  <div class="groups">
+    <div class="group" style="--c: var(--enhancer)"><b>E-commerce</b><span>Store extractor (one row per variant, new since the last run), Marketplace search, Review analyzer, Image downloader</span></div>
+    <div class="group" style="--c: var(--emitter)"><b>Jobs, property, travel and news</b><span>Job listings, Real estate, Travel and places, News and articles, Social posts</span></div>
+    <div class="group" style="--c: var(--manipulator)"><b>Sales leads</b><span>Company lookup, Business listings, Contact extractor, Social link extractor, Email checker</span></div>
+    <div class="group" style="--c: var(--transmuter)"><b>Any website</b><span>List extractor, Page extractor, Page text, Page capture (with Capture Studio), Video downloader, Link extractor, Sitemap explorer</span></div>
+    <div class="group" style="--c: var(--conjurer)"><b>Website and domain</b><span>Site crawler, Technology checker, Domain lookup</span></div>
+    <div class="group" style="--c: var(--specialist)"><b>Files and data</b><span>PDF and image to data (OCR), Data converter</span></div>
+  </div>
+  <p>Every tool has a short explanation at the top. If a run stops early or gives odd results, click <b>Report a problem</b> (the bug button): it saves one ZIP with what happened, a picture of the page and what Gleaner saw there. Look inside before you send it.</p>
+
+  <h2 id="extras">YouTube saving and the Site crawler</h2>
+  <h3>Video downloader on YouTube</h3>
+  <p>Open a video, open the Video downloader, pick the quality, audio (MP3) or subtitles. Files go to your Downloads folder. This uses yt-dlp through Gleaner's helper. For personal use only; protected (DRM) videos can't be saved.</p>
+  <h3>Site crawler (Scrapling)</h3>
+  <p>Enter a start page and Gleaner crawls the site: every page's title, description, headings and links. It stays on the site, follows the site's robots.txt and waits between pages. <b>Stop</b> pauses it; tick <b>Continue the last crawl of this site</b> to carry on later. Scrapling also keeps your saved lists working when a shop changes its layout: the run tells you when it found a list again.</p>
+  <p>Gleaner reads pages with your browser's own identity and never disguises itself or solves CAPTCHAs. Sites that show a bot check are read in your own tabs, where you can solve the check yourself.</p>
+
+  <h2 id="update">Update to a newer version</h2>
+  <ol class="steps">
+    <li>Unzip the newer <code>Gleaner-Setup</code> ZIP and double-click <code>Install Gleaner</code>.</li>
+    <li>On the extensions page, click <b>Reload</b> on Gleaner. Your data, recipes and monitors stay.</li>
+  </ol>
+
+  <h2 id="remove">Uninstall</h2>
+  <ol class="steps">
+    <li>Double-click <code>Uninstall Gleaner</code> in the setup folder. It removes Gleaner's files, its helper, the Scrapling environment and its saved crawl data, and the helper's browser registration.</li>
+    <li>On the extensions page, click <b>Remove</b> on Gleaner. That also deletes the data Gleaner kept in the browser.</li>
+  </ol>
+  <p>Node.js, Python, yt-dlp and ffmpeg stay installed, because other programs may use them. Remove them in <b>Settings &gt; Apps</b> if you don't need them.</p>
+
+  <h2 id="help">If something goes wrong</h2>
+  <table>
+    <tr><th>What you see</th><th>What to do</th></tr>
+    <tr><td>"The 'extension' folder is missing"</td><td>Unzip the whole ZIP first (Extract All), then run Install Gleaner from the unzipped folder.</td></tr>
+    <tr><td>The Video downloader or Site crawler says the helper isn't set up</td><td>Run Install Gleaner again. If you moved Gleaner's folder, load it again with Load unpacked, then run the installer again.</td></tr>
+    <tr><td>The Site crawler offers "Install Scrapling"</td><td>Click it (about 100 MB, a few minutes). If it says Python is needed, run Install Gleaner again and say Y to Python.</td></tr>
+    <tr><td>A tool asks for permission every time</td><td>On the extensions page, open Gleaner's Details and set Site access to "On all sites".</td></tr>
+    <tr><td>A site shows "verify you are human"</td><td>Solve it in the open tab; Gleaner waits and carries on.</td></tr>
+    <tr><td>Anything else</td><td>Click Report a problem in Gleaner and send the ZIP it saves.</td></tr>
+  </table>
+
+  <footer>Gleaner uses Scrapling (BSD-3), yt-dlp (Unlicense), ffmpeg (LGPL/GPL), pdf.js (Apache-2.0) and Tesseract (Apache-2.0). Hunter x Hunter inspired look; the spider emblem is original artwork.</footer>
+</div>
+</body>
+</html>

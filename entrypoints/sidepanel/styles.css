@@ -1,0 +1,170 @@
+@import 'tailwindcss';
+@import '@fontsource/dela-gothic-one/latin-400.css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/*
+ * Gleaner tokens: a Hunter x Hunter look. Phantom Troupe ink for the surfaces, scarlet (the
+ * Kurta clan's eyes) as the one action colour, and the six Nen types as the colours that tell
+ * the tool groups apart (used only in the Nen marks, never for actions or status).
+ * Dark is the default; light follows the system setting or the table's own switch.
+ */
+:root {
+  color-scheme: dark;
+  /* Primitives */
+  --ink-950: #0d0b10;
+  --ink-900: #16131b;
+  --ink-850: #201b27;
+  --ink-700: #342b3c;
+  --ink-300: #a89eb4;
+  --ink-50: #eeeaf2;
+  --scarlet-700: #c8202c;
+  --scarlet-300: #ff6b73;
+
+  /* Semantic */
+  --bg: var(--ink-950);
+  --surface: var(--ink-900);
+  --surface-2: var(--ink-850);
+  --line: var(--ink-700);
+  --text: var(--ink-50);
+  --muted: var(--ink-300);
+  --accent: var(--scarlet-700);
+  --accent-text: var(--scarlet-300);
+  --accent-ink: #fff5f5;
+  --accent-soft: rgb(226 52 63 / 0.14);
+  --danger: #ff9a8a;
+  --ok: #6fd49c;
+
+  /* Nen types */
+  --nen-enhancer: #f2b33d;
+  --nen-transmuter: #b98cff;
+  --nen-emitter: #ff7a45;
+  --nen-conjurer: #4fc3f7;
+  --nen-manipulator: #7bd88f;
+  --nen-specialist: #f06fb1;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f4f3f6;
+    --surface: #ffffff;
+    --surface-2: #eceaf0;
+    --line: #d8d4de;
+    --text: #17131c;
+    --muted: #5e5669;
+    --accent: #b81c28;
+    --accent-text: #a3141f;
+    --accent-ink: #ffffff;
+    --accent-soft: rgb(184 28 40 / 0.1);
+    --danger: #b3261e;
+    --ok: #1d7a4e;
+    --nen-enhancer: #a86b00;
+    --nen-transmuter: #6c3fd1;
+    --nen-emitter: #c24a12;
+    --nen-conjurer: #0b78a8;
+    --nen-manipulator: #2c8a45;
+    --nen-specialist: #b8287a;
+  }
+}
+
+/* Explicit theme chosen in the full-page table; beats the system setting above. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: var(--ink-950);
+  --surface: var(--ink-900);
+  --surface-2: var(--ink-850);
+  --line: var(--ink-700);
+  --text: var(--ink-50);
+  --muted: var(--ink-300);
+  --accent: var(--scarlet-700);
+  --accent-text: var(--scarlet-300);
+  --accent-ink: #fff5f5;
+  --accent-soft: rgb(226 52 63 / 0.14);
+  --danger: #ff9a8a;
+  --ok: #6fd49c;
+  --nen-enhancer: #f2b33d;
+  --nen-transmuter: #b98cff;
+  --nen-emitter: #ff7a45;
+  --nen-conjurer: #4fc3f7;
+  --nen-manipulator: #7bd88f;
+  --nen-specialist: #f06fb1;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f3f6;
+  --surface: #ffffff;
+  --surface-2: #eceaf0;
+  --line: #d8d4de;
+  --text: #17131c;
+  --muted: #5e5669;
+  --accent: #b81c28;
+  --accent-text: #a3141f;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(184 28 40 / 0.1);
+  --danger: #b3261e;
+  --ok: #1d7a4e;
+  --nen-enhancer: #a86b00;
+  --nen-transmuter: #6c3fd1;
+  --nen-emitter: #c24a12;
+  --nen-conjurer: #0b78a8;
+  --nen-manipulator: #2c8a45;
+  --nen-specialist: #b8287a;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  /* Display: Dela Gothic One, for page titles and group headings only */
+  --font-display: 'Dela Gothic One', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  --font-sans: 'Geist Variable', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dela Gothic is heavy by itself: no faux bold on top of it */
+.font-display {
+  font-weight: 400 !important;
+  letter-spacing: 0.005em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

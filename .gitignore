@@ -1,0 +1,17 @@
+# Installed and built
+node_modules
+.output
+.wxt
+stats.html
+release/
+
+# Copied from node_modules by `npm install` (scripts/copy-assets.mjs)
+public/vendor/
+
+# Test output
+e2e/shots/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
