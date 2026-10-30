@@ -36,6 +36,9 @@ type Summary = Awaited<ReturnType<typeof listDatasets>>[number] & { rowCount?: n
 
 const TINY = 100;
 const isTiny = (m: Measured) => m.width > 0 && m.height > 0 && (m.width < TINY || m.height < TINY);
+// Site furniture rather than product photos: not selected at first (still listed, to pick by hand)
+const JUNK = /logo|sprite|icon|favicon|banner|placeholder|no[-_]?ima?ge?|noimg|blank|\/images\/G\/\d+\/|nav[-_]|spacer|loading|spinner|arrow|btn[-_]|button|top[-_]?btn|badge|flag|payment|social|sns|kakao|facebook|instagram|youtube/i;
+const isJunk = (m: Measured) => JUNK.test((m.foundAs ?? m.src).split('?')[0].split('/').slice(-2).join('/')) || (m.width > 0 && m.height > 0 && Math.max(m.width, m.height) / Math.min(m.width, m.height) > 4);
 
 /** Pictures from a saved dataset, with product details from its name, SKU and brand columns. */
 function imagesFromDataset(ds: Dataset, imageKey: string): ImageInfo[] {
@@ -145,11 +148,11 @@ export function ImageDownloader() {
         const tab = await activeTab();
         if (isRestricted(tab.url)) throw new Error("This page can't be read by extensions. Open a normal website first.");
         status('Collecting pictures on this page');
-        found = await call<ImageInfo[]>(tab.id!, 'images');
+        found = (await call<ImageInfo[] | null>(tab.id!, 'images')) ?? [];
         pageTab.current = tab.id!;
         if (variantPics) {
           status("Looking for each variant's pictures (colour, size)");
-          const vp = await call<{ variant: string; image: string; sku?: string }[]>(tab.id!, 'variantPictures').catch(() => []);
+          const vp = (await call<{ variant: string; image: string; sku?: string }[] | null>(tab.id!, 'variantPictures').catch(() => null)) ?? [];
           const bySrc = new Map(found.map((f) => [f.src, f]));
           const product = found.find((f) => f.product)?.product ?? '';
           for (const v of vp) {
@@ -160,7 +163,7 @@ export function ImageDownloader() {
         }
         if (fullSize && openSmall && found.length) {
           status('Opening small pictures to find their big versions (up to a minute)');
-          const pairs = await call<{ thumb: string; big: string }[]>(tab.id!, 'openThumbnails').catch(() => []);
+          const pairs = (await call<{ thumb: string; big: string }[] | null>(tab.id!, 'openThumbnails').catch(() => null)) ?? [];
           const big = new Map(pairs.map((p) => [p.thumb, p.big]));
           for (const img of found) if (big.has(img.src)) img.big = big.get(img.src);
         }
@@ -189,7 +192,7 @@ export function ImageDownloader() {
       if (signal.aborted) return null;
       setImages(m.images);
       setSizes(new Set());
-      setSelected(new Set(m.images.filter((x) => !isTiny(x)).map((x) => x.src)));
+      setSelected(new Set(m.images.filter((x) => !isTiny(x) && !isJunk(x)).map((x) => x.src)));
       setFolder(safeName(`images-${name}`));
       const tagged = m.images.filter((x) => x.sku).length;
       setNaming(m.images.filter((x) => x.variant).length >= 2 ? 'name_variant' : tagged >= m.images.length * 0.3 ? 'sku_name' : m.images.some((x) => x.product) ? 'name' : 'number');
@@ -258,7 +261,7 @@ export function ImageDownloader() {
       async (m, i) => {
         const sub = bySize ? `${m.size ? SIZE_LABEL[m.size] : 'Unknown size'}/` : '';
         try {
-          let blob = await fetchImage(m.src, ctrl.signal, pageTab.current && !m.foundAs ? viaTab(call, pageTab.current) : undefined);
+          let blob = await fetchImage(m.src, ctrl.signal, pageTab.current ? viaTab(call, pageTab.current) : undefined);
           let ext = m.ext;
           const conv = await convert(blob, format).catch(() => null);
           if (conv) ((blob = conv.blob), (ext = conv.ext));

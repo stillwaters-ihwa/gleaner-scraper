@@ -6,7 +6,7 @@ import { browser } from 'wxt/browser';
 
 export const HELPER = 'com.gleaner.ytdlp';
 /** The helper this build ships (public/helper/gleaner-host.mjs); older installed ones are replaced. */
-export const HELPER_VERSION = 3;
+export const HELPER_VERSION = 4;
 
 /** The single video a YouTube address points at, as a plain watch address; null for home, channel or search pages. */
 export function youtubeVideoUrl(raw: string): string | null {
@@ -141,7 +141,7 @@ export const revealFile = (file: string) => ask({ type: 'reveal', file }).done;
 
 /** Starts a download; `cancel` stops it and yt-dlp leaves no finished file. */
 export function downloadVideo(url: string, choice: YtChoice, onProgress: (p: YtProgress) => void) {
-  const job = ask<{ file: string; bytes: number | null }>({ type: 'download', url, choice }, onProgress);
+  const job = ask<{ file: string; bytes: number | null; height?: number | null; asked?: number | null }>({ type: 'download', url, choice }, onProgress);
   return { done: job.done, cancel: () => void ask({ type: 'cancel', jobId: job.id }).done.catch(() => {}) };
 }
 

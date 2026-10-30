@@ -19,7 +19,10 @@ export function pageHealth(itemSelector?: string): PageHealth {
   const title = document.title;
   const text = (document.body?.innerText ?? '').slice(0, 4000);
   const items = itemSelector ? safeQueryAll(document, itemSelector).length : -1;
-  const bot = BOT.test(title) || BOT.test(text.slice(0, 800)) || !!document.querySelector('iframe[src*="captcha"], #challenge-form, form[action*="validateCaptcha"]');
+  // Amazon's "Sorry! Something went wrong" dog page is how it turns away automated visits:
+  // retrying makes it worse, so it is treated like a bot check (a person takes over)
+  const amazonDogs = /(^|\.)amazon\./.test(location.hostname) && (/sorry! something went wrong/i.test(title) || /sorry! something went wrong|something went wrong on our end/i.test(text.slice(0, 600)) || !!document.querySelector('img[alt*="Dogs of Amazon" i], a[href*="/dogsofamazon"]')) && items <= 0;
+  const bot = amazonDogs || BOT.test(title) || BOT.test(text.slice(0, 800)) || !!document.querySelector('iframe[src*="captcha"], #challenge-form, form[action*="validateCaptcha"]');
   // Error wording only counts when the products are missing, so a product named "Error Free" is fine
   const error = items <= 0 && (ERROR_TITLE.test(title) || ERROR_PATH.test(location.pathname) || ERROR_TEXT.test(text) || text.trim().length < 200);
   const reason: PageHealth['reason'] = bot ? 'bot check' : error ? 'error page' : items === 0 ? 'no products' : '';

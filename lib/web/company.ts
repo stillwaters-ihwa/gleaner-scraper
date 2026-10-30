@@ -1,6 +1,7 @@
 // Company lookup: a profile of a business from its own website and public records. It reads the
 // homepage and a few contact/about pages, plus registration and mail-server records. It collects
 // business details only (company emails, phones, address, socials), not employees.
+import { responseText } from '../charset';
 import { contactLinks, findEmails, findPhones, findSocials, SOCIAL_NETWORKS } from '../dom/doc';
 import { addressText, isType, ldNodes, str, type Row } from '../verticals/structured';
 import { detectTech } from './tech';
@@ -43,7 +44,7 @@ interface Fetched {
 async function load(url: string, signal?: AbortSignal): Promise<Fetched> {
   try {
     const res = await fetch(url, { signal, credentials: 'include', redirect: 'follow' });
-    const html = await res.text();
+    const html = await responseText(res);
     if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
     // A page that is just a JavaScript shell needs a real tab to show its content
     if (html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, '').trim().length > 200 || res.status === 404) {

@@ -4,7 +4,7 @@ import type { Recipe } from '@/lib/db';
 export type ToolId =
   | 'list' | 'page' | 'images' | 'emails' | 'shopify' | 'social' | 'text' | 'sitemap'
   | 'marketplace' | 'reviews' | 'jobs' | 'realestate' | 'travel' | 'articles' | 'posts'
-  | 'company' | 'business' | 'emailcheck' | 'tech' | 'domain' | 'links' | 'convert' | 'documents' | 'video' | 'capture' | 'sitecrawl';
+  | 'company' | 'business' | 'emailcheck' | 'tech' | 'domain' | 'links' | 'convert' | 'documents' | 'video' | 'capture' | 'sitecrawl' | 'seller';
 
 export type View = { tab: 'tools'; tool?: ToolId } | { tab: 'data'; datasetId?: string } | { tab: 'recipes' } | { tab: 'monitors' } | { tab: 'prices'; trackerId?: string };
 

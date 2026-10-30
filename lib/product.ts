@@ -1,5 +1,6 @@
 // Product extraction that works on any store's product page, live or fetched.
 // Order of trust: JSON-LD > microdata > Open Graph > known store layouts (Amazon) > page heuristics.
+import { amazonProduct } from './amazon';
 import { extractVariants, VARIANTS_KEY } from './variants';
 import { jsonLd } from './dom/doc';
 import { safeQueryAll } from './dom/selector';
@@ -38,13 +39,46 @@ const abs = (u: string, base: string) => {
 };
 const isType = (n: any, t: string) => [].concat(n?.['@type'] ?? []).some((x: string) => String(x).toLowerCase() === t);
 
-export const CURRENCY_SYMBOL: Record<string, string> = { $: 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₩': 'KRW', '₹': 'INR', '₱': 'PHP', '₫': 'VND', '฿': 'THB', 'R$': 'BRL', 'A$': 'AUD', 'C$': 'CAD', 'zł': 'PLN', '₺': 'TRY', '₽': 'RUB' };
+export const CURRENCY_SYMBOL: Record<string, string> = { $: 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₩': 'KRW', '₹': 'INR', '₱': 'PHP', '₫': 'VND', '฿': 'THB', 'R$': 'BRL', 'A$': 'AUD', 'C$': 'CAD', 'zł': 'PLN', '₺': 'TRY', '₽': 'RUB', '원': 'KRW', '円': 'JPY', '￥': 'JPY', '元': 'CNY' };
 // An amount: "12,000" / "1.234,56" (with thousands groups) or "9500" / "19.99" (without).
 // Whole numbers only: never stop part-way through the digits, so "9500" can't read as "950".
 const AMOUNT = String.raw`(?<![\d.,])(\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)`;
 const PRICE_RE = new RegExp(
-  String.raw`(R\$|A\$|C\$|US\$|[$€£¥₩₹₱₫฿₺₽]|zł|\b(?:USD|EUR|GBP|KRW|JPY|CAD|AUD|INR)(?![A-Za-z]))\s?${AMOUNT}|${AMOUNT}\s?(€|zł|kr|₫|\b(?:USD|EUR|GBP|KRW|JPY)\b)`,
+  String.raw`(R\$|A\$|C\$|US\$|[$€£¥￥₩₹₱₫฿₺₽]|zł|\b(?:USD|EUR|GBP|KRW|JPY|CAD|AUD|INR)(?![A-Za-z]))\s?${AMOUNT}|${AMOUNT}\s?(€|zł|kr|₫|원|円|元|\b(?:USD|EUR|GBP|KRW|JPY)\b)`,
 );
+
+/** Wording that says the price is only shown to signed-in or approved buyers. */
+export const PRICE_GATE = /(log ?in|sign ?in|register|members? only)[^.\n]{0,30}(to )?(see|view|show|for|get)?[^.\n]{0,12}(price|pricing)|(price|pricing)[^.\n]{0,20}(log ?in|sign ?in|members? only|after login)|request (a )?(wholesale )?(price|quote)|login for price|로그인[^\n]{0,15}(가격|확인|공개)|(가격|도매가)[^\n]{0,15}(로그인|회원)|회원[^\n]{0,10}공개|ログイン[^\n]{0,10}価格/i;
+/** A retail price shown on wholesale sites, which isn't what a buyer pays. */
+export const RETAIL_LABEL = /\b(RRP|MSRP|SRP|suggested (retail|price)|retail price|recommended retail)\b|소비자가|권장소비자가|정상가|希望小売価格|Τυπική Τιμή/i;
+
+/**
+ * Wholesale price rules for one product: a price hidden behind a login is reported as such (not as
+ * a number some feed or tag still carries), and a labelled retail price goes to msrp, not price.
+ */
+export function wholesalePriceRules(p: Product, text: string): Product {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean).slice(0, 120);
+  // "PRICE" and "Log In" on separate lines count too
+  const gated = PRICE_GATE.test(lines.join('\n')) || PRICE_GATE.test(lines.join(' ')) || lines.some((l, i) => /^(price|가격|도매가)\s*:?$/i.test(l) && /^(log ?in|sign ?in|로그인)/i.test(lines[i + 1] ?? ''));
+  if (p.price) {
+    // The line that shows this price, and the one before it: is it labelled as a retail price?
+    const n = Number(p.price);
+    const at = lines.findIndex((l) => Number(parsePrice(l)?.amount) === n);
+    if (at >= 0 && (RETAIL_LABEL.test(lines[at]) || (!parsePrice(lines[at - 1] ?? '') && RETAIL_LABEL.test(lines[at - 1] ?? '')))) {
+      p.msrp = p.price;
+      // A different amount elsewhere in the block, labelled wholesale, is the real price
+      const ws = lines.find((l) => /wholesale|도매가|공급가|B2B|your price|dealer/i.test(l) && parsePrice(l) && Number(parsePrice(l)!.amount) !== n);
+      p.price = ws ? parsePrice(ws)!.amount : '';
+      if (!p.price) p.pricing_status ||= 'retail price only';
+    }
+  }
+  if (gated) {
+    if (p.price) p.hidden_price = p.price;
+    p.price = '';
+    p.pricing_status = 'login required';
+  }
+  return p;
+}
 
 /** "1.234,56 €" -> { amount: "1234.56", currency: "EUR" } */
 export function parsePrice(text: string): { amount: string; currency: string } | null {
@@ -164,58 +198,14 @@ function fromOpenGraph(doc: Document, url: string): Product {
   };
 }
 
-/** Amazon product pages (any marketplace). */
-function fromAmazon(doc: Document, url: string): Product {
-  const t = (sel: string) => clean(doc.querySelector(sel)?.textContent);
-  const asin = url.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/)?.[1] ?? (doc.querySelector('#ASIN') as HTMLInputElement | null)?.value ?? '';
-  const priceText =
-    t('#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen') ||
-    t('#corePrice_feature_div .a-offscreen') ||
-    t('#corePriceDisplay_desktop_feature_div .a-price .a-offscreen') ||
-    t('#price_inside_buybox') ||
-    t('#priceblock_ourprice') ||
-    t('.a-price .a-offscreen');
-  const listText = t('#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen') || t('.a-text-price[data-a-strike] .a-offscreen');
-  const price = parsePrice(priceText);
-  const list = parsePrice(listText);
-  const img = doc.querySelector('#landingImage, #imgBlkFront, #main-image') as HTMLImageElement | null;
-  let images: string[] = [];
-  try {
-    images = Object.keys(JSON.parse(img?.getAttribute('data-a-dynamic-image') ?? '{}'));
-  } catch {
-    /* no dynamic image map */
-  }
-  const hires = img?.getAttribute('data-old-hires') || images[images.length - 1] || img?.getAttribute('src') || '';
-  // Larger gallery images are listed in an inline script as "hiRes":"https://..."
-  const scripts = safeQueryAll(doc, 'script').map((s) => s.textContent ?? '').join('\n');
-  const gallery = [...scripts.matchAll(/"hiRes":"(https:[^"]+)"/g)].map((m) => m[1]);
-  const all = [...new Set([hires, ...gallery].filter(Boolean))];
-  const bullets = safeQueryAll(doc, '#feature-bullets li span.a-list-item').map((e) => clean(e.textContent)).filter(Boolean);
-  const ratingText = clean(doc.querySelector('#acrPopover')?.getAttribute('title')) || t('#acrPopover .a-icon-alt');
-  return {
-    title: t('#productTitle'),
-    brand: t('#bylineInfo').replace(/^(visit the|brand:)\s*/i, '').replace(/\s*store$/i, ''),
-    price: price?.amount ?? '',
-    compare_at_price: list?.amount ?? '',
-    currency: price?.currency ?? '',
-    availability: normalizeAvailability(t('#availability')),
-    asin,
-    sku: asin,
-    rating: ratingText.match(/[\d.,]+/)?.[0]?.replace(',', '.') ?? '',
-    review_count: t('#acrCustomerReviewText').replace(/[^\d]/g, ''),
-    category: safeQueryAll(doc, '#wayfinding-breadcrumbs_feature_div li a').map((a) => clean(a.textContent)).join(' > '),
-    image: all[0] ?? '',
-    images: all.join(' | '),
-    description: (bullets.join(' • ') || t('#productDescription')).slice(0, 5000),
-    source: 'amazon page',
-  };
-}
-
 const PRICE_HINT = '[itemprop="price"], [class*="price" i], [id*="price" i], [data-price], [class*="Price"]';
 
 /** Last resort: read the page layout like a person would. */
 function fromHeuristics(doc: Document, url: string): Product {
-  const title = clean(doc.querySelector('h1')?.textContent) || clean(doc.title.split(/\s[|–-]\s/)[0]);
+  // Without a heading, the tab title only counts when it isn't just the site's name
+  const siteName = clean(doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content')) || new URL(url).hostname.replace(/^www\./, '');
+  const tabTitle = clean(doc.title.split(/\s[|–-]\s/)[0]);
+  const title = clean(doc.querySelector('h1')?.textContent) || (tabTitle && !tabTitle.toLowerCase().includes(siteName.toLowerCase()) && !siteName.toLowerCase().includes(tabTitle.toLowerCase()) ? tabTitle : '');
   let price: ReturnType<typeof parsePrice> = null;
   let compare: ReturnType<typeof parsePrice> = null;
   for (const el of safeQueryAll(doc, PRICE_HINT)) {
@@ -223,7 +213,7 @@ function fromHeuristics(doc: Document, url: string): Product {
       compare ??= parsePrice(el.textContent ?? '');
       continue;
     }
-    if (el.closest('header, footer, nav, [class*="cart" i], [class*="related" i], [class*="recommend" i]')) continue;
+    if (el.closest('header, footer, nav, aside, [class*="cart" i], [class*="related" i], [class*="recommend" i], [class*="recent" i], [class*="viewed" i], [class*="history" i], [class*="sidebar" i], [class*="quick" i]')) continue;
     const p = parsePrice(el.getAttribute('content') ? `${el.getAttribute('content')} ${doc.querySelector('[itemprop="priceCurrency"]')?.getAttribute('content') ?? ''}` : el.textContent ?? '');
     if (p) {
       price = p;
@@ -245,7 +235,8 @@ function fromHeuristics(doc: Document, url: string): Product {
     .map((i) => abs(i.getAttribute('data-zoom-image') || i.getAttribute('data-large') || i.getAttribute('data-src') || i.getAttribute('src') || '', url))
     .filter((s) => s && !/sprite|logo|icon|placeholder|blank|loading|pixel/i.test(s));
   const desc = doc.querySelector('[class*="description" i], [id*="description" i], [itemprop="description"]');
-  const brand = doc.querySelector('[class*="brand" i]:not(body):not(html)');
+  // A brand element in the page body, not the menu's "Brands" link
+  const brand = safeQueryAll(doc, '[class*="brand" i]:not(body):not(html)').find((el) => !el.closest('header, nav, footer, [class*="menu" i], [class*="gnb" i]') && !/^brands?$/i.test(clean(el.textContent)) && clean(el.textContent).length < 80);
   const text = clean(doc.body?.textContent).slice(0, 20000);
   return {
     title,
@@ -254,7 +245,7 @@ function fromHeuristics(doc: Document, url: string): Product {
     compare_at_price: compare && price && parseFloat(compare.amount) > parseFloat(price.amount) ? compare.amount : '',
     currency: price?.currency ?? '',
     availability: /out of stock|sold out/i.test(text) ? 'out of stock' : /in stock|add to (cart|bag|basket)/i.test(text) ? 'in stock' : '',
-    sku: text.match(/\b(?:SKU|Item (?:No|number)|Product code|Model)[.:#\s]+([A-Z0-9][A-Z0-9-_.]{2,30})/i)?.[1] ?? '',
+    sku: text.match(/\b(?:SKU|Item (?:No|number)|Product code|Model)[.:#\s]+([A-Z0-9][A-Z0-9-_.]{2,30}(?:\([^)\s]{1,20}\))?)/i)?.[1] ?? '',
     gtin: text.match(/\b(?:EAN|UPC|GTIN|Bar ?code|JAN)[.:#\s]+(\d{8,14})\b/i)?.[1] ?? '',
     image: imgs[0] ?? '',
     images: [...new Set(imgs)].slice(0, 20).join(' | '),
@@ -295,12 +286,14 @@ export function isBlockedPage(doc: Document): boolean {
 /** Everything we can find about the product on this page. */
 export function extractProduct(doc: Document, url: string): Product {
   if (isBlockedPage(doc)) return { url, error: 'The site showed a bot check (CAPTCHA) instead of the page' };
-  const parts = [fromJsonLd(doc, url), fromMicrodata(doc, url)];
-  if (isAmazon(url)) parts.unshift(fromAmazon(doc, url));
-  parts.push(fromOpenGraph(doc, url), fromHeuristics(doc, url));
-  const p = merge(...parts);
+  // Amazon: its own layout only. The page-wide guessers would pick prices from carousels,
+  // comparison tables and other sellers' widgets, and descriptions from Amazon's search blurb.
+  const p = isAmazon(url) ? amazonProduct(doc, url) : merge(fromJsonLd(doc, url), fromMicrodata(doc, url), fromOpenGraph(doc, url), fromHeuristics(doc, url));
+  if (p.error) return { ...p, url };
   if (p.currency && /^[^A-Z]/.test(p.currency)) p.currency = CURRENCY_SYMBOL[p.currency] ?? p.currency;
-  if (p.price) p.price = parsePrice(`$${p.price}`)?.amount ?? p.price;
+  if (p.price) p.price = parsePrice(`${p.price}`)?.amount ?? p.price;
+  // A "was" price is only a was price when it's higher than the price
+  if (p.compare_at_price && p.price && !(Number(p.compare_at_price) > Number(p.price))) delete p.compare_at_price;
 
   // Details from the product's own area: SKU, PartNum, stock, MOQ, box quantities, other currencies
   if (!isAmazon(url)) {
@@ -311,6 +304,7 @@ export function extractProduct(doc: Document, url: string): Product {
     if (fields.stock_status && !p.availability) p.availability = fields.stock_status;
     const prices = pricesByCurrency(text.split(/\n+/).slice(0, 80));
     if (Object.keys(prices).length > 1) Object.assign(p, prices);
+    wholesalePriceRules(p, text);
   }
   // Every variant with its own price, SKU and picture, for "one row per variant"
   const variants = extractVariants(doc, url);

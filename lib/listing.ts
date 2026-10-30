@@ -13,7 +13,7 @@ export type Speed = 'gentle' | 'normal' | 'fast';
 /** Pause between pages (random within the range) and a longer cool-down every few pages. */
 export const SPEEDS: Record<Speed, { min: number; max: number; coolEvery: number; coolMs: number; label: string }> = {
   gentle: { min: 3000, max: 6000, coolEvery: 15, coolMs: 30000, label: 'Gentle: 3 to 6 s between pages, 30 s break every 15 pages' },
-  normal: { min: 1500, max: 3000, coolEvery: 25, coolMs: 15000, label: 'Normal: 1.5 to 3 s between pages, 15 s break every 25 pages' },
+  normal: { min: 1000, max: 2000, coolEvery: 40, coolMs: 10000, label: 'Normal: 1 to 2 s between pages, 10 s break every 40 pages' },
   fast: { min: 600, max: 1200, coolEvery: 40, coolMs: 8000, label: 'Fast: under 1.2 s between pages. Only for sites that cope well' },
 };
 
@@ -56,7 +56,7 @@ const BACKOFF = [5000, 15000, 40000];
 const BOT_WAIT_MS = 5 * 60 * 1000;
 const BOT_POLL_MS = 3000;
 
-const PAGE_PARAM = /([?&](?:page|p|pg|pagenum|pagenumber|page_no|pageno|currentpage|paged)=)(\d+)/i;
+const PAGE_PARAM = /([?&](?:page|p|pg|pagenum|pagenumber|page_no|pageno|currentpage|curr_page|cur_page|paged)=)(\d+)/i;
 const PAGE_PATH = /(\/page[/-])(\d+)(\/|$)/i;
 
 /** The next page's address when the page number is in the URL, e.g. ?page=2 or /page/2/. */
@@ -102,6 +102,29 @@ export async function crawlListing(tabId: number, opts: CrawlOptions): Promise<C
   const grid = await call<{ itemSelector: string; count: number } | null>(tabId, 'findProductList');
   if (!grid) throw new Error("Couldn't find a product grid on this page. Open a search or category page, or use the List extractor and pick the list by hand.");
   let itemSelector = grid.itemSelector;
+  // Amazon's result cards keep one address on every page. Never trade it for another list on
+  // the page (a sponsored carousel): when the cards are missing, they are still being drawn.
+  const fixedGrid = /s-search-result/.test(itemSelector);
+  const firstCount = grid.count;
+  /** Wait up to `ms` for the grid's items to appear; true once they do. */
+  const waitForCards = async (ms: number) => {
+    const until = Date.now() + ms;
+    while (Date.now() < until && !opts.signal.aborted) {
+      const h = await call<PageHealth>(tabId, 'pageHealth', itemSelector).catch(() => null);
+      if (h && h.items > 0) return true;
+      if (h?.reason === 'bot check') return false;
+      await sleep(700);
+    }
+    return false;
+  };
+  /** Another list found on a later page is only the product grid when it's about as big as page 1's. */
+  const refind = async (): Promise<boolean> => {
+    if (fixedGrid) return waitForCards(15000);
+    const again = await call<{ itemSelector: string; count: number } | null>(tabId, 'findProductList').catch(() => null);
+    if (!again || again.count < Math.max(3, firstCount * 0.4)) return false;
+    itemSelector = again.itemSelector;
+    return true;
+  };
   const listingUrl = await call<string>(tabId, 'location');
   // Remember how this site pages, from a healthy page, for recovery later
   const form = await call<FormPager | null>(tabId, 'formPager');
@@ -175,7 +198,8 @@ export async function crawlListing(tabId: number, opts: CrawlOptions): Promise<C
         await call(tabId, 'goBack').catch(() => {});
         await settle(tabId);
         const next = await call<NextControl | null>(tabId, 'findNextControl').catch(() => null);
-        if (next) {
+        // Only a real pager control: a "See more" link elsewhere on the page leads somewhere else
+        if (next && next.kind !== 'load-more') {
           await call(tabId, 'clickNext', next.selector).catch(() => {});
           await settle(tabId);
         }
@@ -196,34 +220,36 @@ export async function crawlListing(tabId: number, opts: CrawlOptions): Promise<C
   /** Adds new products from what the page shows now; returns how many were new. */
   const collect = async (): Promise<number> => {
     let here = await call<Product[]>(tabId, 'extractCards', itemSelector).catch(() => [] as Product[]);
-    if (!here.length) {
-      // The grid's address can differ on later pages (a banner shifts it): find it again
-      const again = await call<{ itemSelector: string } | null>(tabId, 'findProductList').catch(() => null);
-      if (again) {
-        itemSelector = again.itemSelector;
-        here = await call<Product[]>(tabId, 'extractCards', itemSelector).catch(() => [] as Product[]);
-      }
+    if (!here.length && (await refind())) {
+      // The grid's address can differ on later pages (a banner shifts it), or it is still loading
+      here = await call<Product[]>(tabId, 'extractCards', itemSelector).catch(() => [] as Product[]);
     }
     let n = 0;
     for (const c of here) {
       const k = c.url || c.title;
-      if (k && !seen.has(k)) {
+      if (!k) continue;
+      if (!seen.has(k)) {
         seen.add(k);
         cards.push(c);
         n++;
+      } else if (!c.sponsored) {
+        // The same product as an ad and as a normal result: keep the normal result
+        const i = cards.findIndex((x) => (x.url || x.title) === k);
+        if (i >= 0 && cards[i].sponsored) cards[i] = c;
       }
     }
     return n;
   };
-  /** Scroll this page (and press "Show more") until no new products arrive. Returns how many came. */
-  const loadAllHere = async (): Promise<number> => {
+  /** Scroll this page (and press "Show more") until no new products arrive. Returns how many came.
+   *  On a page with a pager, one short look is enough: those pages rarely grow when scrolled. */
+  const loadAllHere = async (paged = false): Promise<number> => {
     let got = 0;
     for (let round = 0, misses = 0; round < 300 && misses < 2 && cards.length < opts.maxItems && !opts.signal.aborted; round++) {
       const before = await call<string>(tabId, 'signature', itemSelector).catch(() => '');
       const r = await call<{ how: string; label?: string }>(tabId, 'loadMore').catch(() => ({ how: 'none', label: '' }));
       if (r.how === 'none') break;
       opts.status(`Page ${page}: ${r.how === 'clicked' ? `clicked "${r.label}"` : 'scrolling'} to load more products, ${cards.length} so far`);
-      const changed = await waitForListChange(tabId, itemSelector, before, opts.signal, misses ? 8000 : 5000);
+      const changed = await waitForListChange(tabId, itemSelector, before, opts.signal, paged ? 1500 : misses ? 8000 : 5000);
       const n = changed ? await collect() : 0;
       got += n;
       opts.progress(cards.length);
@@ -258,9 +284,13 @@ export async function crawlListing(tabId: number, opts: CrawlOptions): Promise<C
     // Guardrail: never read an error page as if it were the next page
     const h = await healthy().catch(() => null);
     if (!h?.ok) {
-      const again = h?.reason === 'no products' ? await call<{ itemSelector: string } | null>(tabId, 'findProductList') : null;
-      if (again && h?.reason === 'no products') itemSelector = again.itemSelector;
-      else if (!(await recover(page, h?.reason ?? 'error page'))) {
+      if (h?.reason === 'no products' && (await refind())) {
+        /* the grid is back */
+      } else if (h?.reason === 'no products' && fixedGrid && pagesRead) {
+        if (viaAddress) pagesRead--;
+        stopped = `Page ${page - 1} was the last page`;
+        break;
+      } else if (!(await recover(page, h?.reason ?? 'error page'))) {
         resumeFrom = page;
         stopped =
           h?.reason === 'bot check'
@@ -274,7 +304,10 @@ export async function crawlListing(tabId: number, opts: CrawlOptions): Promise<C
     let added = await collect();
     opts.progress(cards.length);
     // Everything this page can show, before moving on
-    if (cards.length < opts.maxItems) added += await loadAllHere();
+    if (cards.length < opts.maxItems) {
+      const pager = await call<NextControl | null>(tabId, 'findNextControl').catch(() => null);
+      added += await loadAllHere(!!pager && pager.kind !== 'load-more');
+    }
     opts.status(`Page ${page}${opts.maxPages > 0 ? ` of ${(opts.startPage ?? 1) - 1 + opts.maxPages}` : ''}: ${cards.length} products so far${recovered ? `, ${recovered} error ${recovered === 1 ? 'page' : 'pages'} recovered` : ''}`);
 
     // A page with nothing new usually means the end; a second one in a row makes sure
@@ -300,11 +333,27 @@ export async function crawlListing(tabId: number, opts: CrawlOptions): Promise<C
       await sleep(speed.coolMs);
     }
 
+    // The pager says this is the last page: don't make up later page numbers
+    if (await call<boolean>(tabId, 'pagerAtEnd').catch(() => false)) {
+      stopped = `Reached the last page (${page})`;
+      break;
+    }
     const before = await call<string>(tabId, 'signature', itemSelector).catch(() => '');
+    const beforeCards = await call<string>(tabId, 'cardsSignature', itemSelector).catch(() => '');
     const beforeUrl = await call<string>(tabId, 'location').catch(() => '');
     // The list changed, or (after clicking the pager) the address did: a new page whose grid sits elsewhere
     const arrived = async (ms: number, byClick = true) => {
-      if (await waitForListChange(tabId, itemSelector, before, opts.signal, ms)) return true;
+      if (await waitForListChange(tabId, itemSelector, before, opts.signal, ms)) {
+        if (!fixedGrid) return true;
+        // Amazon changes the address first and draws the new cards a moment later
+        const until = Date.now() + 15000;
+        while (Date.now() < until && !opts.signal.aborted) {
+          const now = await call<string>(tabId, 'cardsSignature', itemSelector).catch(() => '');
+          if (now && now !== beforeCards && !now.startsWith('0|')) return true;
+          await sleep(600);
+        }
+        return true; // the health check at the top of the loop decides what this page is
+      }
       const now = await call<string>(tabId, 'location').catch(() => beforeUrl);
       return byClick && !!now && now !== beforeUrl;
     };

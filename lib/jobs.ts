@@ -255,10 +255,13 @@ export interface StoreSetup {
   fresh?: FreshMode;
 }
 
+/** What the listing card already names reliably: the product page only fills these in when the card had none. */
+const CARD_IDENTITY = new Set(['title', 'brand', 'sku', 'gtin', 'asin', 'url']);
+
 /** Card data first, then anything the product page adds. */
 const mergeProduct = (card: Product, page: Product): Product => {
   const out: Product = { ...card };
-  for (const [k, v] of Object.entries(page)) if (v && k !== 'source') out[k] = v;
+  for (const [k, v] of Object.entries(page)) if (v && k !== 'source' && !(CARD_IDENTITY.has(k) && card[k])) out[k] = v;
   out.source = [card.source, page.source].filter(Boolean).join(', ');
   return out;
 };
@@ -283,7 +286,7 @@ export async function runStore(setup: StoreSetup, { signal, progress, status, in
       list,
       async (url, idx) => {
         try {
-          const page = await withRetry(() => productFromUrl(url, load, ctrl.signal), ctrl.signal);
+          const page = await withRetry(() => productFromUrl(url, load, ctrl.signal, !!cards?.[idx]?.title), ctrl.signal);
           return cards ? mergeProduct(cards[idx], page) : page;
         } catch (e) {
           if (e instanceof BlockedError) {

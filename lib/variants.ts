@@ -2,6 +2,7 @@
 // Read from the data shops publish on product pages: schema.org product groups and offers,
 // WooCommerce's variation list, and the product JSON Shopify themes embed. Also turns one
 // product row into one row per variant.
+import { amazonVariants } from './amazon';
 import type { Product } from './product';
 
 export interface Variant {
@@ -15,6 +16,8 @@ export interface Variant {
   available?: boolean;
   image?: string;
   gtin?: string;
+  /** The variant's own page, when it has one (Amazon child products). */
+  url?: string;
 }
 
 const str = (v: unknown): string => (v == null ? '' : typeof v === 'object' ? str((v as any).name ?? (v as any)['@id'] ?? '') : String(v).trim());
@@ -22,6 +25,13 @@ const abs = (u: string, base: string) => {
   if (!u) return '';
   try {
     return new URL(u.startsWith('//') ? 'https:' + u : u, base).href;
+  } catch {
+    return '';
+  }
+};
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname;
   } catch {
     return '';
   }
@@ -51,9 +61,11 @@ const isType = (n: any, t: string) => [].concat(n?.['@type'] ?? []).some((x) => 
 /** schema.org: a ProductGroup's hasVariant, or a Product with several offers that name their SKU. */
 function fromSchema(doc: Document, url: string): Variant[] {
   const nodes = jsonLdNodes(doc);
-  const group = nodes.find((n) => isType(n, 'productgroup'));
-  const varied: string[] = [].concat(group?.variesBy ?? []).map((v: string) => String(v).replace(/^https?:\/\/schema\.org\//, ''));
-  const list: any[] = group?.hasVariant ?? nodes.find((n) => isType(n, 'product') && n.hasVariant)?.hasVariant ?? [];
+  // Some themes publish one product group per colour: read them all
+  const groups = nodes.filter((n) => isType(n, 'productgroup'));
+  const varied: string[] = [...new Set(groups.flatMap((g) => [].concat(g.variesBy ?? [])))].map((v: string) => String(v).replace(/^https?:\/\/schema\.org\//, ''));
+  const fromGroups = groups.flatMap((g) => [].concat(g.hasVariant ?? []));
+  const list: any[] = fromGroups.length ? fromGroups : nodes.find((n) => isType(n, 'product') && n.hasVariant)?.hasVariant ?? [];
   if (list.length) {
     return list.map((v) => {
       const o = firstOf(v.offers) ?? {};
@@ -146,6 +158,7 @@ function fromShopifyJson(doc: Document, url: string): Variant[] {
 
 /** Every variant the product page publishes, from the richest source found. */
 export function extractVariants(doc: Document, url: string): Variant[] {
+  if (/(^|\.)amazon\.[a-z.]+$/i.test(hostOf(url))) return amazonVariants(doc, url).slice(0, 500);
   for (const read of [fromShopifyJson, fromWoo, fromSchema]) {
     const list = read(doc, url).filter((v) => v.name || v.sku || Object.keys(v.options).length);
     if (list.length > 1) return list.slice(0, 300);
@@ -186,6 +199,7 @@ export const VARIANT_COLUMNS: [string, string][] = [
   ['variant_available', 'variant in stock'],
   ['variant_image', 'variant image'],
   ['variant_gtin', 'variant barcode'],
+  ['variant_url', 'variant link'],
 ];
 
 /** One row per variant (products without variants stay as one row); drops the hidden JSON field. */
@@ -214,6 +228,7 @@ export function expandVariants(products: Product[]): Product[] {
         variant_available: v.available === undefined ? '' : v.available ? 'yes' : 'no',
         variant_image: v.image ?? '',
         variant_gtin: v.gtin ?? '',
+        variant_url: v.url ?? '',
       });
     }
   }

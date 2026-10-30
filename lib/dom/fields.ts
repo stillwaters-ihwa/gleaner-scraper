@@ -14,7 +14,7 @@ const SEMANTIC: { key: string; re: RegExp }[] = [
   { key: 'gtin', re: /^(bar ?code|ean(-?13)?|upc|jan|gtin|isbn|바코드)$/i },
   { key: 'qty_per_carton', re: /^((pcs|pieces|qty|quantity|units?|ea)\s*(per|\/)\s*(carton|ctn|case|outer)|(carton|ctn|case|outer)\s*(qty|quantity|pack|size)|master ?carton|case ?pack|1 ?(carton|ctn|case)$|(carton|ctn)$|카톤|박스입수)/i },
   { key: 'qty_per_box', re: /^((pcs|pieces|qty|quantity|units?|ea)\s*(per|\/)\s*(box|pack|inner|bundle)|(box|inner|pack)\s*(qty|quantity|pack|size)|inner ?pack|1 ?box$|box$|입수)/i },
-  { key: 'moq', re: /^(moq|min(imum)?\.?\s*(order)?\s*(qty|quantity|amount)?|min\.? ?order|최소( ?주문)?( ?수량)?)$/i },
+  { key: 'moq', re: /^(moq|min(imum)?\.?\s*(order)?\s*(qty|quantity|amount)?|min\.? ?order|최소( ?주문| ?구매)?( ?수량)?|구매수량)$/i },
   { key: 'stock_qty', re: /^(stock|in ?stock|stock ?(qty|quantity|level|status)?|inventory|available( ?qty| ?quantity)?|qty ?available|on ?hand|재고( ?수량)?)$/i },
   { key: 'weight', re: /^(weight|net ?weight|gross ?weight|중량)$/i },
   { key: 'volume', re: /^(volume|capacity|size|용량)$/i },

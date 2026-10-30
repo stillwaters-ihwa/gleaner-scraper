@@ -255,7 +255,23 @@ export function VideoDownloader() {
     const ext = fileName(m.url).match(/\.(\w{2,5})$/)?.[1] ?? (m.kind === 'audio' ? 'mp3' : m.kind === 'subtitles' ? 'vtt' : 'mp4');
     const name = `${safeName(m.kind === 'subtitles' ? `${title} ${m.title ?? ''}` : title || fileName(m.url))}.${ext}`;
     try {
-      await browser.downloads.download({ url: m.url, filename: name, conflictAction: 'uniquify' });
+      const id = await browser.downloads.download({ url: m.url, filename: name, conflictAction: 'uniquify' });
+      // Only "Saved" once the file is complete, and not when the site sent a web page instead
+      // (an expired or blocked link answers with an HTML error page)
+      const item = await new Promise<Browser.downloads.DownloadItem | undefined>((resolve) => {
+        const check = async () => {
+          const [d] = await browser.downloads.search({ id });
+          if (!d || d.state !== 'in_progress') {
+            browser.downloads.onChanged.removeListener(onChange);
+            resolve(d);
+          }
+        };
+        const onChange = (delta: Browser.downloads.DownloadDelta) => delta.id === id && delta.state && void check();
+        browser.downloads.onChanged.addListener(onChange);
+        void check();
+      });
+      if (!item || item.state === 'interrupted') throw new Error(item?.error ? `the download stopped (${item.error})` : 'the download stopped');
+      if (/^text\/(html|plain)/i.test(item.mime ?? '') || (item.fileSize >= 0 && item.fileSize < 2048 && m.kind !== 'subtitles')) throw new Error('the site sent an error page instead of the file (the link may have expired). Play the video again and save it while it plays');
       setSaved((s) => [name, ...s].slice(0, 8));
     } catch (e) {
       setError(`Couldn't save ${name}: ${errorText(e)}`);

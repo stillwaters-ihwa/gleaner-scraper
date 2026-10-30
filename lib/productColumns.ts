@@ -4,17 +4,20 @@ import { FIELD_LABELS, wholesaleColumns } from './dom/fields';
 import type { Product } from './product';
 
 const ORDER = [
-  'new_since_last_run', 'title', 'brand', 'price', 'compare_at_price', 'currency', '@prices', 'availability', 'stock_status', 'stock_qty',
-  'sku', 'part_number', 'gtin', 'mpn', 'asin', 'moq', 'qty_per_box', 'box', 'qty_per_carton', 'carton', 'box_price',
-  'rating', 'review_count', 'category', 'variants', 'variant', 'variant_options', 'variant_sku', 'variant_price', 'variant_compare_at', 'variant_available', 'variant_image', 'variant_gtin', 'weight', 'volume', 'origin', 'expiry', 'image', 'images', 'description',
+  'new_since_last_run', 'title', 'brand', 'author', 'price', 'pricing_status', 'msrp', 'hidden_price', 'compare_at_price', 'typical_price', 'unit_price', 'savings', 'coupon', 'deal', 'currency', '@prices', 'availability', 'availability_text', 'stock_status', 'stock_qty',
+  'sku', 'part_number', 'gtin', 'mpn', 'asin', 'parent_asin', 'manufacturer', 'sold_by', 'seller_id', 'ships_from', 'sponsored', 'prime', 'delivery', 'bsr', 'bsr_category', 'best_sellers_rank', 'bought_past_month', 'badge', 'date_first_available', 'dimensions', 'item_weight', 'country_of_origin', 'moq', 'qty_per_box', 'box', 'qty_per_carton', 'carton', 'box_price',
+  'rating', 'review_count', 'category', 'variants', 'variant', 'variant_options', 'variant_sku', 'variant_price', 'variant_compare_at', 'variant_available', 'variant_image', 'variant_gtin', 'variant_url', 'weight', 'volume', 'origin', 'expiry', 'image', 'images', 'bullets', 'description',
   '@attrs', 'url', 'source', 'error',
 ];
 
 const BASE_LABELS: Record<string, string> = {
-  title: 'title', brand: 'brand', price: 'price', compare_at_price: 'compare-at price', currency: 'currency',
+  title: 'title', brand: 'brand', price: 'price', pricing_status: 'price status', msrp: 'retail price (RRP)', hidden_price: 'price in page data (not shown to you)', compare_at_price: 'compare-at price', currency: 'currency',
   availability: 'availability', mpn: 'mpn', asin: 'asin', rating: 'rating', review_count: 'reviews', category: 'category',
   new_since_last_run: 'new since last run', variants: 'variants', variant: 'variant', variant_options: 'variant options', variant_sku: 'variant SKU', variant_price: 'variant price',
-  variant_compare_at: 'variant compare-at price', variant_available: 'variant in stock', variant_image: 'variant image', variant_gtin: 'variant barcode',
+  variant_compare_at: 'variant compare-at price', variant_available: 'variant in stock', variant_image: 'variant image', variant_gtin: 'variant barcode', variant_url: 'variant link', author: 'author', typical_price: 'typical price', unit_price: 'unit price', savings: 'savings', coupon: 'coupon', deal: 'deal',
+  availability_text: 'availability (as shown)', parent_asin: 'parent asin', manufacturer: 'manufacturer', sold_by: 'sold by', seller_id: 'seller id', ships_from: 'ships from', sponsored: 'sponsored', prime: 'Prime', delivery: 'delivery',
+  bsr: 'best sellers rank', bsr_category: 'rank category', best_sellers_rank: 'all ranks', bought_past_month: 'bought in past month', badge: 'badge', date_first_available: 'date first available',
+  dimensions: 'dimensions', item_weight: 'item weight', country_of_origin: 'country of origin', bullets: 'about this item',
   image: 'image', images: 'all images', description: 'description', url: 'url', source: 'found via', error: 'error',
 };
 

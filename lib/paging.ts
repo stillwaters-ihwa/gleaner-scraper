@@ -4,19 +4,20 @@ import { call, sleep, tabs, waitForLoad } from './tab';
 /** Wait until the list on the page changes (new page loaded, or new items appended). */
 export async function waitForListChange(tabId: number, itemSelector: string, before: string, signal: AbortSignal, timeoutMs = 20000): Promise<boolean> {
   const start = Date.now();
-  await sleep(700);
+  // Short polls instead of fixed waits: a fast site's next page counts the moment it is there
+  await sleep(250);
   while (Date.now() - start < timeoutMs && !signal.aborted) {
     try {
       const t = await tabs.get(tabId);
       if (t.status === 'loading') {
         await waitForLoad(tabId);
-        await sleep(900);
+        await sleep(300);
       }
       if ((await call<string>(tabId, 'signature', itemSelector)) !== before) return true;
     } catch {
       /* page is mid-navigation */
     }
-    await sleep(500);
+    await sleep(300);
   }
   return false;
 }

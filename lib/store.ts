@@ -1,5 +1,6 @@
 // Store-level scraping for any e-commerce site: platform detection, product feeds,
 // product URLs from sitemaps, and product pages loaded the cheapest way that works.
+import { responseText } from './charset';
 import { shopifyFeedVariants, VARIANTS_KEY } from './variants';
 import { crawlSitemaps, robotsSitemaps } from './sitemap';
 import { extractProduct, isAmazon, isBlockedPage, type Product } from './product';
@@ -167,32 +168,40 @@ export async function productUrlsFromSitemap(origin: string, opts: { signal: Abo
 
 export type ProductLoad = 'auto' | 'fetch' | 'tab';
 
-async function viaFetch(url: string, signal: AbortSignal): Promise<{ product: Product; weak: boolean }> {
+async function viaFetch(url: string, signal: AbortSignal, named = false): Promise<{ product: Product; weak: boolean }> {
   const res = await fetch(url, { signal, credentials: 'include', redirect: 'follow' });
-  const html = await res.text();
+  const html = await responseText(res);
   const doc = new DOMParser().parseFromString(html, 'text/html');
   if (res.status === 403 || res.status === 429 || res.status === 503 || isBlockedPage(doc)) throw new BlockedError(`blocked (HTTP ${res.status})`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const product = extractProduct(doc, res.url || url);
+  if (product.error && /something went wrong/i.test(product.error)) throw new BlockedError(product.error);
   // Little found usually means the page builds itself with JavaScript
-  const weak = !product.title || (!product.price && !product.image);
+  // (garbled text, U+FFFD, means the page was decoded wrongly: a real tab reads it properly)
+  // (when the listing card already gave the name, a page without a heading is still fine)
+  const weak = (!product.title && !named) || /�/.test(product.title) || (!product.price && !product.image);
   return { product, weak };
 }
 
 async function viaTab(url: string): Promise<Product> {
   return withBackgroundTab(url, async (tabId) => {
     const p = await call<Product>(tabId, 'fullProduct');
-    if (p?.error?.includes('bot check')) throw new BlockedError(p.error);
+    // A bot check, or Amazon's "Something went wrong" page (it is limiting requests): back off
+    if (p?.error && /bot check|something went wrong/i.test(p.error)) throw new BlockedError(p.error);
     return p;
   }, isAmazon(url) ? 1800 : 1200);
 }
 
-/** Load one product page. "auto" tries the fast fetch first and opens a real tab only when needed. */
-export async function productFromUrl(url: string, mode: ProductLoad, signal: AbortSignal): Promise<Product> {
-  if (mode === 'tab' || (mode === 'auto' && isAmazon(url))) return viaTab(url);
+/**
+ * Load one product page. "auto" tries the fast fetch first and opens a real tab only when needed
+ * (the same rule as the Page extractor, Amazon included: its HTML has everything, and a fetch
+ * reports dead links and errors properly).
+ */
+export async function productFromUrl(url: string, mode: ProductLoad, signal: AbortSignal, named = false): Promise<Product> {
+  if (mode === 'tab') return viaTab(url);
   if (mode === 'fetch') return (await viaFetch(url, signal)).product;
   try {
-    const { product, weak } = await viaFetch(url, signal);
+    const { product, weak } = await viaFetch(url, signal, named);
     return weak ? { ...(await viaTab(url)), url } : product;
   } catch (e) {
     if (signal.aborted) throw e;

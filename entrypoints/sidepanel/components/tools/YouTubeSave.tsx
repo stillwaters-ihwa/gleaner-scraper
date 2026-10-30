@@ -35,13 +35,13 @@ function Setup({ reason, onRetry, checking }: { reason: HelperError['reason'] | 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-3">
       <div>
-        <h4 className="font-display text-[14px] font-semibold">Set up YouTube saving (once)</h4>
+        <h4 className="font-display text-[14px] font-semibold">Set up video saving (once)</h4>
         <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
           YouTube (and links from 1,000+ other video sites) are saved by <span className="text-ink">yt-dlp</span>, a free tool that runs on your computer and keeps up with the sites' changes. Gleaner talks to it through a small helper.
         </p>
       </div>
       {reason === 'forbidden' && (
-        <Notice tone="error">The helper is installed, but not for this copy of Gleaner (it was probably loaded from another folder). Run step 2 again, or run install.cmd with the code below.</Notice>
+        <Notice tone="error">yt-dlp and ffmpeg are fine; skip step 1. The helper is installed, but not for this copy of Gleaner (it was probably loaded from another folder). Run step 2 again, or run install.cmd with the code below.</Notice>
       )}
       {reason === 'outdated' && <Notice tone="error">This copy of Gleaner has a newer helper. Run step 2 once more to install it; after that it updates itself.</Notice>}
       {reason === 'stopped' && <Notice tone="error">The helper started but stopped. Run step 2 again; if it keeps happening, check that Node.js is installed.</Notice>}
@@ -58,8 +58,8 @@ function Setup({ reason, onRetry, checking }: { reason: HelperError['reason'] | 
           <span>
             <span className="font-semibold">2.</span> Open the folder you loaded Gleaner from, then its <code className="font-mono">helper</code> folder, and double-click <code className="font-mono">install.cmd</code>.
           </span>
-          <span className="text-[12px] text-muted">It works out Gleaner's code by itself. If it ever asks, or this step doesn't take, run it in that folder with this code:</span>
-          <CopyLine text={`install.cmd ${id}`} />
+          <span className="text-[12px] text-muted">It works out Gleaner's code by itself. If this step doesn't take, open PowerShell in that helper folder (Shift + right-click, Open in Terminal) and run:</span>
+          <CopyLine text={`.\\install.cmd ${id}`} />
         </li>
         <li className="flex flex-col gap-1.5">
           <span>
@@ -85,7 +85,7 @@ export function YouTubeSave({ url }: { url: string }) {
   const [height, setHeight] = useState<number | null>(null);
   const [sub, setSub] = useState('');
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [saved, setSaved] = useState<{ file: string; bytes: number | null }[]>([]);
+  const [saved, setSaved] = useState<{ file: string; bytes: number | null; height?: number | null; asked?: number | null }[]>([]);
 
   const connect = useCallback(async () => {
     setChecking(true);
@@ -139,7 +139,14 @@ export function YouTubeSave({ url }: { url: string }) {
   const noFfmpeg = hello && !hello.ffmpeg;
   return (
     <div className="flex flex-col gap-3">
-      {error && <Notice tone="error">{error}</Notice>}
+      {error && (
+        <div className="flex flex-col gap-2">
+          <Notice tone="error">{error}</Notice>
+          <Button onClick={() => void connect()} disabled={checking} className="self-start">
+            <ArrowClockwise size={15} aria-hidden /> {checking ? 'Trying…' : 'Try again'}
+          </Button>
+        </div>
+      )}
       {info && (
         <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-3">
           <div className="flex items-start gap-2.5">
@@ -231,6 +238,7 @@ export function YouTubeSave({ url }: { url: string }) {
             <li key={i} className="flex items-center justify-between gap-2 text-[12.5px]">
               <span className="min-w-0 truncate text-ok" title={s.file}>
                 Saved {s.file.split(/[\\/]/).pop()} {s.bytes ? `(${mb(s.bytes)})` : ''}
+                {s.asked && s.height && s.height < s.asked ? <span className="text-muted"> · {s.height}p is the best this video has</span> : null}
               </span>
               <button type="button" onClick={() => void revealFile(s.file).catch((e) => setError(`Couldn't open the folder: ${(e as Error).message}. The file is in ${hello?.downloads ?? 'Downloads'}.`))} className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-ink">
                 <FolderOpen size={14} aria-hidden /> Show

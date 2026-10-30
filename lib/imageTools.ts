@@ -64,6 +64,19 @@ export function fullSizeUrl(src: string): string {
   else if (/\/web\/product\/(tiny|small|medium|extra\/small)\//.test(u.pathname)) {
     u.pathname = u.pathname.replace(/\/web\/product\/(tiny|small|medium|extra\/small)\//, '/web/product/big/');
   }
+  // Wikimedia: /thumb/a/ab/Name.jpg/300px-Name.jpg -> /a/ab/Name.jpg
+  else if (/(upload|thumb)\.wikimedia\.org$/.test(host) && u.pathname.includes('/thumb/')) {
+    u.hostname = 'upload.wikimedia.org';
+    u.pathname = u.pathname.replace(/\/thumb(\/.+?\/[^/]+\.\w+)\/[^/]+$/, '$1');
+  }
+  // Cloudinary: /image/upload/w_300,h_300,c_fill/v123/name.jpg -> /image/upload/v123/name.jpg
+  else if (/res\.cloudinary\.com$/.test(host)) {
+    u.pathname = u.pathname.replace(/\/(image\/upload)\/(?:[a-z]{1,3}_[^/]+\/)+/i, '/$1/');
+  }
+  // imgix and other resizing services: ?w=300&h=300&fit=crop
+  else if (/imgix\.net$/.test(host) || ['w', 'h', 'width', 'height', 'resize', 'fit', 'crop', 'dpr', 'q'].filter((k) => u.searchParams.has(k)).length >= 1 && /\.(jpe?g|png|webp|gif)$/i.test(u.pathname)) {
+    for (const k of ['w', 'h', 'width', 'height', 'resize', 'fit', 'crop', 'dpr', 'q', 'auto']) u.searchParams.delete(k);
+  }
   return u.href === before ? '' : u.href;
 }
 
@@ -146,10 +159,12 @@ export function viaTab(call: (tabId: number, command: string, ...args: any[]) =>
 
 async function measureOne(img: ImageInfo, fullSize: boolean, signal: AbortSignal, viaPage?: ViaPage): Promise<Measured> {
   // The big version found for a small picture first, then a known full-size address, then the picture itself
-  const tries = fullSize ? [...new Set([img.big ?? '', fullSizeUrl(img.big ?? ''), fullSizeUrl(img.src), img.src].filter(Boolean))] : [img.src];
+  // Known full-size addresses first (the original file), then the bigger version the page showed, then the picture itself
+  const tries = fullSize ? [...new Set([fullSizeUrl(img.big ?? ''), fullSizeUrl(img.src), img.big ?? '', img.src].filter(Boolean))] : [img.src];
   for (const url of tries) {
     try {
-      const blob = await fetchImage(url, signal, url === img.src ? viaPage : undefined);
+      // Through the page too, for shops that only serve pictures to their own pages
+      const blob = await fetchImage(url, signal, viaPage);
       const buf = await blob.arrayBuffer();
       const { width, height } = await dimensions(blob);
       // A "full-size" URL that decodes smaller than what the page showed isn't an upgrade
@@ -201,6 +216,11 @@ export async function measureImages(
   for (const m of out.filter(Boolean)) {
     const key = m.hash || m.src;
     const first = seen.get(key);
+    // The same file for two different products (a shared placeholder or photo) stays with each
+    if (first && first.sku && m.sku && first.sku !== m.sku) {
+      kept.push(m);
+      continue;
+    }
     if (first) {
       duplicates++;
       // Fill in product details the first copy didn't have
@@ -263,7 +283,8 @@ export function fileNames(list: Measured[], pattern: string): string[] {
       sku: m.sku ?? '',
       brand: m.brand ?? '',
       part: m.part ?? '',
-      variant: m.variant ?? '',
+      // "Lip Balm Clear", not "Lip Balm Lip Balm Clear" when the variant repeats the product name
+      variant: (m.variant ?? '').replace(new RegExp(`^${(m.product ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[-–:/]?\\s*`, 'i'), '') || (m.variant ?? ''),
       size: m.size ? SIZE_LABEL[m.size] : '',
       w: m.width ? String(m.width) : '',
       h: m.height ? String(m.height) : '',

@@ -191,6 +191,7 @@ export function priceAlerts(t: Tracker, before: Map<string, TrackerSource>): Pri
     if (!countable(s)) continue;
     const price = s.lastPrice!;
     const prev = before.get(s.id);
+    // An advertised price below MAP is a violation even while the item is out of stock
     if (t.ref.map != null && price < t.ref.map) violations.push(s);
     if (t.ref.yourPrice != null && price < t.ref.yourPrice) belowYou.push(s);
     // A drop only counts against a reading in the same currency

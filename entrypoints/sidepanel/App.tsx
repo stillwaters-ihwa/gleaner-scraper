@@ -31,6 +31,7 @@ import { MarketplaceTool } from './components/tools/MarketplaceTool';
 import { VideoDownloader } from './components/tools/VideoDownloader';
 import { PageCapture } from './components/tools/PageCapture';
 import { SiteCrawl } from './components/tools/SiteCrawl';
+import { SellerInventory } from './components/tools/SellerInventory';
 import { refreshScraplingReady } from '@/lib/scrapling';
 
 export type ToolGroup = 'ecommerce' | 'industries' | 'leads' | 'any' | 'website' | 'files';
@@ -48,6 +49,7 @@ export const GROUPS: { id: ToolGroup; name: string; nen: NenType }[] = [
 export const TOOLS: { id: ToolId; group: ToolGroup; name: string; blurb: string; output: string; Icon: typeof Eye; keywords?: string }[] = [
   { id: 'shopify', group: 'ecommerce', name: 'Store extractor', blurb: 'Any online store: Amazon, Shopify, WooCommerce or custom. Exports as a Shopify CSV too.', output: 'row per product', Icon: HandFist, keywords: 'shop products price wholesale cafe24 k-beauty korean' },
   { id: 'marketplace', group: 'ecommerce', name: 'Marketplace search', blurb: 'Search Amazon, Walmart, eBay, Etsy, AliExpress or K-beauty shops by keyword, or look up ASINs.', output: 'row per product', Icon: Binoculars, keywords: 'amazon asin walmart ebay etsy alibaba aliexpress target yesstyle olive young stylevana research' },
+  { id: 'seller', group: 'ecommerce', name: 'Seller Central inventory', blurb: 'Your own Amazon listings from Manage All Inventory: SKU, FNSKU, price, fees, stock, sales and rank.', output: 'row per listing', Icon: Database, keywords: 'amazon seller central inventory my listings fba fnsku sku stock fees manage' },
   { id: 'reviews', group: 'ecommerce', name: 'Review analyzer', blurb: 'Customer reviews with the rating spread, sentiment, and what people praise or complain about.', output: 'row per review', Icon: Eye, keywords: 'amazon reviews ratings sentiment complaints' },
   { id: 'images', group: 'ecommerce', name: 'Image downloader', blurb: 'Pictures sorted by size, named by product or SKU.', output: 'files', Icon: Cards, keywords: 'photos pictures download zip' },
   { id: 'jobs', group: 'industries', name: 'Job listings', blurb: 'Roles, companies, salaries and dates from job boards, or straight from company hiring systems.', output: 'row per job', Icon: IdentificationBadge, keywords: 'indeed glassdoor monster wellfound upwork greenhouse lever ashby careers hiring salary' },
@@ -232,6 +234,8 @@ function ToolView({ tool }: { tool: ToolId }) {
       return <PageCapture />;
     case 'sitecrawl':
       return <SiteCrawl />;
+    case 'seller':
+      return <SellerInventory />;
   }
 }
 

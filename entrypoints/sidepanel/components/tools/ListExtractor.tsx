@@ -3,7 +3,7 @@ import { ArrowsClockwise, BookmarkSimple, CursorClick, MagicWand } from '@phosph
 import { browser } from 'wxt/browser';
 import { columnsFromRows, defaultPattern, newRecipe, saveDataset, saveRecipe, urlMatches, type Column, type ListRecipe, type Recipe } from '@/lib/db';
 import { labelForKey, uniqueLabels } from '@/lib/columns';
-import { activeTab, call, isRestricted, requestHostAccess, sleep, waitForLoad } from '@/lib/tab';
+import { activeTab, call, hasHostAccess, isRestricted, requestHostAccess, sleep, waitForLoad } from '@/lib/tab';
 import { adaptiveKey, healList, runList } from '@/lib/jobs';
 import { Button, Field, NumberInput, Notice, Section, Segmented, inputCls } from '../ui';
 import { RunBar, hostOf, useJob } from '../run';
@@ -130,6 +130,28 @@ export function ListExtractor() {
   }
 
   const detect = (index = 0) => act(async () => load(await call(tab!.id, 'findList', index)));
+
+  // One click: find the list as soon as the tool opens on a page (or the page changes), when
+  // Gleaner may already read websites. A saved recipe for this page is left for the user to apply.
+  useEffect(() => {
+    if (!tab || isRestricted(tab.url) || matching.length) return;
+    let live = true;
+    void (async () => {
+      if (!(await hasHostAccess())) return;
+      await sleep(300);
+      if (!live) return;
+      try {
+        const c = await call<Candidate | null>(tab.id, 'findList', 0);
+        if (live && c) await load(c);
+      } catch {
+        /* the page is still loading; Find list works by hand */
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab?.id, tab?.url, matching.length]);
   const pickList = () => act(async () => load(await call(tab!.id, 'pickList')));
   const pickNext = () =>
     act(async () => {

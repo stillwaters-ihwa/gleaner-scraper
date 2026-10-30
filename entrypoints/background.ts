@@ -295,7 +295,10 @@ export default defineBackground(() => {
     const url = wholeFileUrl(d.url);
     const kind = classify(url, type);
     if (!kind || kind === 'subtitles') return;
-    void rememberVideo(d.tabId, { url, kind, via: 'network', mime: type.split(';')[0] || undefined, bytes: kind === 'file' || kind === 'audio' ? sizeFromHeaders(d.responseHeaders ?? []) : undefined, at: Date.now() });
+    // Captions and tiny pieces sent with a video type (TikTok) aren't videos
+    const bytes = sizeFromHeaders(d.responseHeaders ?? []);
+    if ((kind === 'file' || kind === 'audio') && bytes !== undefined && bytes < 2048) return;
+    void rememberVideo(d.tabId, { url, kind, via: 'network', mime: type.split(';')[0] || undefined, bytes: kind === 'file' || kind === 'audio' ? bytes : undefined, at: Date.now() });
   };
   const startSniffing = async () => {
     if (!browser.webRequest || browser.webRequest.onHeadersReceived.hasListener(onMediaResponse) || !(await hasHostAccess())) return;

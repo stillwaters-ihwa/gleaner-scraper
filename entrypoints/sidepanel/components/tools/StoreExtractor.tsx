@@ -50,7 +50,12 @@ export function StoreExtractor() {
 
   useEffect(() => {
     activeTab()
-      .then((t) => !isRestricted(t.url) && setStore((s) => s || t.url!))
+      .then((t) => {
+        if (isRestricted(t.url)) return;
+        setStore((s) => s || t.url!);
+        // Amazon starts on the gentle pace (shown selected, so what runs is what you see)
+        if (/(^|\.)amazon\.[a-z.]+\//i.test(t.url!.replace(/^https?:\/\//, ''))) setSpeed('gentle');
+      })
       .catch(() => {});
   }, []);
 

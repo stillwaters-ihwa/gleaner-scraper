@@ -1,5 +1,5 @@
 // Product cards on listing pages (search results, category grids). Runs in the live page.
-import { parsePrice, type Product } from '../product';
+import { parsePrice, wholesalePriceRules, type Product } from '../product';
 import { blockText, pricesByCurrency, readDetails } from './fields';
 import { findLists, isVisible } from './list';
 import { safeQueryAll, uniqueSelector } from './selector';
@@ -30,8 +30,15 @@ function productLink(item: Element): string {
   const links = safeQueryAll(item, 'a[href]') as HTMLAnchorElement[];
   if (item instanceof HTMLAnchorElement) links.unshift(item);
   const good = links.filter((a) => a.href.startsWith('http') && !/#|javascript:|add-to-cart|addtocart|wishlist|cart\b|login|signin|review/i.test(a.getAttribute('href') ?? ''));
-  // Prefer links that look like product pages
-  return (good.find((a) => /\/(dp|gp\/product|product|products|p|item|detail|goods)\b/i.test(a.pathname)) ?? good[0])?.href ?? '';
+  // The product's own page: the link around the picture or name, a product-like path; not the
+  // seller's other products, a brand or a category (Domeggook cards link to both)
+  const score = (a: HTMLAnchorElement) =>
+    (a.querySelector('img') ? 3 : 0) +
+    (a.closest('h1, h2, h3, h4, [class*="title" i], [class*="name" i]') || a.querySelector('h2, h3, h4, [class*="title" i], [class*="name" i]') ? 3 : 0) +
+    (/\/(dp|gp\/product|product|products|p|item|detail|goods)\b/i.test(a.pathname) ? 2 : 0) +
+    (/\/\d{5,}(\.html)?$/.test(a.pathname) ? 2 : 0) -
+    (/list|search|seller|shop|store|brand|categor|[?&](sw|q|keyword)=/i.test(a.pathname + a.search) ? 4 : 0);
+  return good.map((a, i) => ({ a, s: score(a) - i * 0.01 })).sort((x, y) => y.s - x.s)[0]?.a.href ?? '';
 }
 
 const BADGE = /^(sponsored|ad|new|sale|hot|best( ?seller)?|cpnp|limited|exclusive|free shipping|in stock|out of stock|sold out|log ?in|sign ?in|add to (cart|bag|basket)|wishlist|quick ?view|compare|bar ?code.*|\d+% off|save.*|-?\d+%|only \d+ left.*)$/i;
@@ -53,10 +60,13 @@ function cardTitle(item: Element): string {
     if (score > bestScore) ((bestScore = score), (best = t));
   };
   for (const el of safeQueryAll(item, 'h1, h2, h3, h4, h5, h6, [class*="title" i], [class*="name" i], a[href], p, span, div, strong')) {
-    if (el.querySelector('h1, h2, h3, h4, p, li') || /brand|price|badge|label|tag|button|btn|rating|review/i.test((el as HTMLElement).className + '')) continue;
+    if (el.querySelector('h1, h2, h3, h4, p, li, img') || /brand|price|badge|label|tag|button|btn|rating|review|vendor|desc|summary|excerpt|short/i.test((el as HTMLElement).className + '')) continue;
+    if (parsePrice(text(el)) && text(el).length > 30) continue;
     const titleish = /^H[1-6]$/.test(el.tagName) || /title|name/i.test((el as HTMLElement).className + '') ? 60 : 0;
+    // A sentence (a description) is less likely the name than a short label
+    const sentence = el.tagName === 'P' || /[.!?]\s/.test(text(el)) ? -50 : 0;
     const linked = el.closest('a[href]') ? 20 : 0;
-    consider(text(el), titleish + linked);
+    consider(text(el), titleish + linked + sentence);
   }
   for (const a of safeQueryAll(item, 'a[title], img[alt]')) consider(a.getAttribute('title') || a.getAttribute('alt') || '', 10);
   return best;
@@ -80,6 +90,42 @@ function cardPrices(item: Element) {
   return { price, compare };
 }
 
+/** An Amazon search result card: its own price, list price, review count and badges. */
+function amazonCard(item: Element, base: Product): Product {
+  const money = (el: Element | null) => parsePrice(clean(el?.textContent));
+  // The price to pay is the first price that isn't struck through or a per-unit price "($1.25/Fl Oz)"
+  // (unit and list prices are both drawn as .a-text-price)
+  const prices = safeQueryAll(item, '.a-price').filter((p) => !p.closest('[data-a-strike="true"], .a-text-price'));
+  const price = money(prices[0]?.querySelector('.a-offscreen') ?? null);
+  const listEl = item.querySelector('.a-price[data-a-strike="true"] .a-offscreen');
+  const list = money(listEl);
+  const unitEl = safeQueryAll(item, '.a-price.a-text-price').find((p) => !p.matches('[data-a-strike="true"]') && /\/\s*\p{L}/u.test(clean(p.parentElement?.textContent)));
+  // Review count: "108,570 ratings" on the link to the reviews (not the star rating's label)
+  const countEl = item.querySelector('a[href*="#customerReviews"] [aria-label], [aria-label$=" ratings" i], [aria-label$=" rating" i], a[href*="#customerReviews"] .s-underline-text, a[href*="#customerReviews"] span:not(.a-icon-alt)');
+  const countText = countEl?.getAttribute('aria-label') || text(countEl);
+  const count = /out of 5/i.test(countText) ? '' : (countText.match(/[\d.,]+\s*[KkMm]?/)?.[0] ?? '');
+  const k = /k/i.test(count) ? 1e3 : /m/i.test(count) ? 1e6 : 1;
+  const all = text(item);
+  const sponsored = !!item.querySelector('.puis-sponsored-label-text, .s-sponsored-label-text, [aria-label="Sponsored" i], [data-component-type="sp-sponsored-result"]') || /^sponsored\b/i.test(clean(item.querySelector('h2')?.getAttribute('aria-label')));
+  // The second half of the name Amazon shows under the brand line
+  const h2s = safeQueryAll(item, 'h2').map((h) => clean(h.getAttribute('aria-label') || text(h)).replace(/^sponsored( ad)?\s*[-–:]?\s*/i, ''));
+  return {
+    ...base,
+    title: h2s.sort((a, b) => b.length - a.length)[0] || base.title,
+    price: price?.amount ?? '',
+    compare_at_price: list && price && parseFloat(list.amount) > parseFloat(price.amount) ? list.amount : '',
+    currency: price?.currency || list?.currency || base.currency,
+    unit_price: unitEl ? `${clean(unitEl.querySelector('.a-offscreen')?.textContent)}${clean(unitEl.parentElement?.textContent).replace(/^\(/, '').replace(/\)$/, '').split(clean(unitEl.textContent)).pop()?.replace(/^[^/]*?(?=\/)/, '') ?? ''}` : '',
+    review_count: count ? String(Math.round(parseFloat(count.replace(/,/g, '')) * k)) : '',
+    sponsored: sponsored ? 'yes' : '',
+    bought_past_month: all.match(/([\d.,]+[KkMm]?\+?) bought in past month/i)?.[1] ?? '',
+    coupon: all.match(/(Save [^ ]+ with coupon|\$[\d.]+ off coupon[^.]*)/i)?.[1] ?? '',
+    badge: clean(item.querySelector('.a-badge-text, [data-a-badge-type] .a-badge-label-inner')?.textContent),
+    prime: item.querySelector('.a-icon-prime, [aria-label="Amazon Prime" i]') ? 'yes' : '',
+    delivery: text(item.querySelector('[data-cy="delivery-recipe"]')).replace(/\{[^}]*\}|\(function[\s\S]*$/g, '').trim().slice(0, 120),
+  };
+}
+
 /** Normalize one card into product fields. */
 export function cardProduct(item: Element): Product {
   const t = text(item);
@@ -99,7 +145,7 @@ export function cardProduct(item: Element): Product {
     compare_at_price: compare && price && parseFloat(compare.amount) > parseFloat(price.amount) ? compare.amount : '',
     currency: price?.currency ?? compare?.currency ?? '',
     availability: /out of stock|sold out|unavailable/i.test(t) ? 'out of stock' : '',
-    sku: data('data-sku') || data('data-product-sku') || data('data-prodcd') || data('data-product-id') || asin,
+    sku: data('data-sku') || data('data-product-sku') || data('data-prodcd') || asin,
     gtin: t.match(/\b(?:EAN|UPC|GTIN|Bar ?code|JAN)[.:#\s]+(\d{8,14})\b/i)?.[1] ?? '',
     asin,
     rating: ratingText.match(/(\d+(?:[.,]\d)?)\s*(?:out of|\/|von|sur|de)\s*5/i)?.[1]?.replace(',', '.') ?? '',
@@ -109,7 +155,7 @@ export function cardProduct(item: Element): Product {
     url: asin && /amazon\./i.test(location.hostname) ? `${location.origin}/dp/${asin}` : productLink(item),
     source: 'listing page',
   };
-  if (asin) return base; // Amazon cards: the fields above cover them; their extra text is noise
+  if (asin) return amazonCard(item, base); // Amazon cards: their extra text is noise
 
   // "SKU: ... PartNum : ...", stock, MOQ, box quantities, and each price currency
   // Keep the card's line breaks: "Label: value" pairs are read one line at a time
@@ -122,23 +168,51 @@ export function cardProduct(item: Element): Product {
   const prices = pricesByCurrency([...priceTexts, ...lines.split(/\n+/)]);
   // Several currencies (e.g. KRW and USD): keep each one in its own column
   if (Object.keys(prices).length > 1) Object.assign(base, prices);
-  return base;
+  return wholesalePriceRules(base, lines);
 }
 
-const AMAZON_RESULTS = '[data-component-type="s-search-result"][data-asin]:not([data-asin=""])';
+export const AMAZON_RESULTS = '[data-component-type="s-search-result"][data-asin]:not([data-asin=""])';
+
+/** The pager shows its Next control switched off: this is the last page. */
+export function pagerAtEnd(): boolean {
+  if (document.querySelector('.s-pagination-next.s-pagination-disabled, span.s-pagination-next[aria-disabled="true"]')) return true;
+  const PAGER = 'nav, [class*="pagination" i], [class*="pager" i], [role="navigation"]';
+  return safeQueryAll(document, `${PAGER} a, ${PAGER} button, ${PAGER} span, ${PAGER} li`).some((el) => {
+    const l = clean((el as HTMLElement).innerText || el.getAttribute('aria-label'));
+    const off = (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true' || /\bdisabled\b/i.test(el.className + '');
+    return off && isVisible(el) && /^(next|next page|›|»|>)$/i.test(l);
+  });
+}
 
 /** Find the product grid on this page. */
 export function findProductList(): { itemSelector: string; count: number } | null {
   const amazon = safeQueryAll(document, AMAZON_RESULTS);
   if (amazon.length) return { itemSelector: AMAZON_RESULTS, count: amazon.length };
   // Pick the best list whose items look like products (price or product link)
+  // Shop platforms' own product grids first (WooCommerce, PrestaShop, Cafe24, Magento, Shopify themes)
+  for (const sel of ['ul.products > li.product', '.products .product-miniature', '.xans-product-normalpackage .prdList > li', '.prdList > li[id^="anchorBoxId_"]', 'li.product-item', '.product-grid .grid__item']) {
+    const items = safeQueryAll(document, sel).filter(isVisible);
+    if (items.length >= 3) return { itemSelector: sel, count: items.length };
+  }
   const lists = findLists(10);
+  // A price slot counts even when it says "Log in to see the price" (wholesale sites)
+  const priceSlot = (i: Element) => !!cardPrices(i).price || safeQueryAll(i, '[class*="price" i]').some((e) => /log ?in|sign ?in|price|로그인|가격/i.test(e.textContent ?? ''));
+  const sameSite = (u: string) => {
+    try {
+      return !!u && new URL(u).hostname === location.hostname;
+    } catch {
+      return false;
+    }
+  };
   const score = (items: Element[]) => {
     const sample = items.slice(0, 8);
-    const priced = sample.filter((i) => cardPrices(i).price).length;
-    const linked = sample.filter((i) => /\/(dp|product|products|p|item|detail|goods)\b/i.test(productLink(i))).length;
+    const priced = sample.filter(priceSlot).length;
+    const linked = sample.filter((i) => sameSite(productLink(i))).length;
     const imaged = sample.filter((i) => i.querySelector('img')).length;
-    return (priced * 2 + linked + imaged) / sample.length;
+    // Lists in the header, menus, mini-cart or banners aren't the catalogue
+    const chrome = items[0]?.closest('header, footer, nav, aside, [class*="cart" i], [class*="minicart" i], [class*="banner" i], [class*="usp" i]') ? 0.3 : 1;
+    // Bigger lists are likelier to be the grid: a 3-item promo strip loses to a 24-card grid
+    return ((priced * 2 + linked + imaged) / sample.length) * chrome * Math.log2(Math.max(2, items.length));
   };
   const ranked = lists.map((l) => ({ l, s: score(l.items) })).filter((x) => x.s >= 1.2).sort((a, b) => b.s - a.s || b.l.score - a.l.score);
   const best = ranked[0]?.l;
@@ -195,8 +269,32 @@ export function findNextControl(): { selector: string; label: string; kind: 'nex
   const double = clickables.find((el) => /^(»|>>)$/.test(label(el)) && !/last|end/i.test((el.getAttribute('aria-label') ?? '') + el.className));
   if (double) return { selector: uniqueSelector(double), label: label(double), kind: 'next' };
 
+  const here = new URL(location.href);
+  const curPage = Number(here.searchParams.get('page') ?? here.searchParams.get('p') ?? here.searchParams.get('paged') ?? here.searchParams.get('curr_page') ?? 1) || 1;
+  const toNext = (safeQueryAll(root, 'a[href]') as HTMLAnchorElement[]).find((a) => {
+    if (!isOn(a) || inCarousel(a) || a.closest('header, nav[class*="menu" i], footer')) return false;
+    try {
+      const u = new URL(a.href, location.href);
+      const n = Number(u.searchParams.get('page') ?? u.searchParams.get('p') ?? u.searchParams.get('paged') ?? u.searchParams.get('curr_page'));
+      return u.origin === here.origin && u.pathname === here.pathname && n === curPage + 1;
+    } catch {
+      return false;
+    }
+  });
+  if (toNext) return { selector: uniqueSelector(toNext), label: label(toNext) || `page ${curPage + 1}`, kind: 'next' };
+
   const MORE = /^(load|show|view|see)( \d+)? more\b|more (products|results|items|reviews|listings|jobs)|mehr laden|ver más|charger plus|더\s?보기/i;
   const more = clickables.find((el) => MORE.test(label(el)));
+  // A "See more" link to this page with a page number is a pager (PrestaShop), not a load-more button
+  const moreLink = more?.closest('a[href]') as HTMLAnchorElement | null;
+  if (more && moreLink) {
+    try {
+      const u = new URL(moreLink.href, location.href);
+      if (u.origin === location.origin && u.pathname === location.pathname && /[?&](page|p|pg|paged|curr_page)=\d+/i.test(u.search)) return { selector: uniqueSelector(more), label: label(more), kind: 'next' };
+    } catch {
+      /* not a link */
+    }
+  }
   if (more) return { selector: uniqueSelector(more), label: label(more), kind: 'load-more' };
   return null;
 }

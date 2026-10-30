@@ -26,6 +26,17 @@ const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i;
 // Pieces of a stream, not videos on their own
 const SEGMENT = /\.(ts|m4s|m4f|cmfv|cmfa|aac|vtt)$|[/_-](seg|segment|chunk|frag|fragment)[-_]?\d+|[?&](bytestart|byteend|range)=/i;
 
+// Ad servers: their clips play before the real video and aren't what anyone wants to save
+const AD_HOST = /(^|\.)(2mdn\.net|doubleclick\.net|imasdk\.googleapis\.com|googlesyndication\.com|googleadservices\.com|adnxs\.com|amazon-adsystem\.com|innovid\.com|springserve\.com|teads\.tv)$/i;
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+};
+
 const pathOf = (url: string) => {
   try {
     return new URL(url).pathname;
@@ -36,7 +47,7 @@ const pathOf = (url: string) => {
 
 /** What a URL (and its content type, when known) is, or null when it isn't a whole video. */
 export function classify(url: string, contentType = ''): MediaKind | null {
-  if (!/^https?:/i.test(url)) return null;
+  if (!/^https?:/i.test(url) || AD_HOST.test(hostOf(url))) return null;
   const path = pathOf(url);
   const ct = contentType.split(';')[0].trim().toLowerCase();
   if (HLS_TYPES.test(ct) || /\.m3u8$/i.test(path)) return 'hls';
@@ -92,11 +103,21 @@ export function scanPage(doc: Document, pageUrl: string): FoundMedia[] {
   };
   const title = (doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || doc.title || '').trim();
   for (const v of Array.from(doc.querySelectorAll('video, audio')) as HTMLMediaElement[]) {
-    let srcs = [v.getAttribute('src'), ...Array.from(v.querySelectorAll('source')).map((s) => s.getAttribute('src'))].map(abs).filter(Boolean);
-    if (!srcs.length && v.currentSrc) srcs = [abs(v.currentSrc)];
-    for (const u of new Set(srcs)) {
-      const type = v.querySelector(`source[src="${CSS.escape(u)}"]`)?.getAttribute('type') ?? '';
-      const kind = classify(u, type) ?? (v.tagName === 'AUDIO' ? 'audio' : 'file');
+    // Each source with its declared type (matched by the resolved address, not the attribute text)
+    const typed = new Map<string, string>();
+    const own = abs(v.getAttribute('src'));
+    if (own) typed.set(own, v.getAttribute('type') ?? '');
+    for (const s of Array.from(v.querySelectorAll('source'))) {
+      const u = abs(s.getAttribute('src'));
+      if (u && !typed.has(u)) typed.set(u, s.getAttribute('type') ?? '');
+    }
+    if (!typed.size && v.currentSrc) typed.set(abs(v.currentSrc), '');
+    for (const [u, declared] of typed) {
+      if (!u) continue;
+      // A <video> element's .ogg source is video, whatever the extension suggests
+      const type = declared || (v.tagName === 'VIDEO' && /\.ogg$/i.test(pathOf(u)) ? 'video/ogg' : '');
+      const kind = classify(u, type) ?? (AD_HOST.test(hostOf(u)) ? null : v.tagName === 'AUDIO' ? 'audio' : 'file');
+      if (!kind) continue;
       out = mergeFound(out, { url: u, kind, via: 'page', title, poster: abs(v.getAttribute('poster')) || undefined, width: (v as HTMLVideoElement).videoWidth || undefined, height: (v as HTMLVideoElement).videoHeight || undefined, duration: Number.isFinite(v.duration) && v.duration > 0 ? Math.round(v.duration) : undefined });
     }
     for (const t of Array.from(v.querySelectorAll('track[src]')) as HTMLTrackElement[]) {

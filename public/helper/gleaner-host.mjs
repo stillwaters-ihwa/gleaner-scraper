@@ -10,12 +10,13 @@ import os from 'node:os';
 import path from 'node:path';
 
 /** Gleaner checks this and sends a newer helper when the extension has one. Keep in step with lib/video/youtube.ts. */
-const HELPER_VERSION = 3;
+const HELPER_VERSION = 4;
 
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1'));
 const config = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.join(here, 'config.json'), 'utf8'));
+    // Older installers wrote a byte-order mark, which JSON.parse refuses
+    return JSON.parse(fs.readFileSync(path.join(here, 'config.json'), 'utf8').replace(/^﻿/, ''));
   } catch {
     return {};
   }
@@ -47,7 +48,7 @@ process.stdin.on('data', (chunk) => {
 });
 // The browser closes the pipe when the panel closes: stop any downloads with it
 process.stdin.on('end', () => {
-  for (const p of jobs.values()) p.kill();
+  for (const p of jobs.values()) stop(p);
   engine?.child.kill();
   process.exit(0);
 });
@@ -152,11 +153,12 @@ function startEngine(source) {
 // ---------- commands ----------
 const jobs = new Map();
 const isHttp = (u) => /^https?:\/\//i.test(String(u ?? ''));
-const common = () => ['--no-playlist', '--no-warnings', '--ignore-config', ...(ffmpeg ? ['--ffmpeg-location', ffmpeg] : [])];
+const common = () => ['--no-playlist', '--no-warnings', '--ignore-config', '--encoding', 'utf-8', ...(ffmpeg ? ['--ffmpeg-location', ffmpeg] : [])];
 
 function run(args, onLine) {
   return new Promise((resolve, reject) => {
-    const p = spawn(ytdlp, args, { windowsHide: true });
+    // UTF-8 both ways, so titles in Korean, Japanese and emoji survive into file names and messages
+    const p = spawn(ytdlp, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
     let out = '';
     let err = '';
     let buf = '';
@@ -177,6 +179,20 @@ function run(args, onLine) {
   });
 }
 
+/** End a yt-dlp run and the ffmpeg it started (on Windows, kill() only stops yt-dlp itself). */
+function stop(p) {
+  if (!p || p.exitCode != null) return;
+  if (process.platform === 'win32') spawn('taskkill', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true });
+  else p.kill();
+}
+
+/** The part of the file name that tells qualities apart. */
+function outSuffix(choice) {
+  if (choice.kind === 'audio') return ' audio';
+  if (choice.kind === 'subtitles') return '';
+  return Number(choice.height) ? ` ${Math.round(Number(choice.height))}p` : '';
+}
+
 function cleanError(err) {
   const line = err.split(/\r?\n/).filter((l) => /ERROR/.test(l)).pop() ?? err.trim().split(/\r?\n/).pop() ?? '';
   return line.replace(/^ERROR:\s*(\[\w+\]\s*[\w-]+:\s*)?/, '').trim();
@@ -195,10 +211,12 @@ function summarize(j) {
   const byHeight = new Map();
   // Per height, the one the download will use: H.264 if there is one (plays everywhere), plain file first
   const rank = (x) => (/^avc1/.test(x.vcodec ?? '') ? 0 : 2) + plain(x);
+  // Keyed by the short side ("1080p" for a 1080×1920 Short), which is what yt-dlp's res: sort means
+  const side = (f) => (f.width ? Math.min(f.width, f.height) : f.height);
   for (const f of formats) {
     if (!f.height || f.vcodec === 'none') continue;
-    const cur = byHeight.get(f.height);
-    if (!cur || rank(f) < rank(cur)) byHeight.set(f.height, f);
+    const cur = byHeight.get(side(f));
+    if (!cur || rank(f) < rank(cur)) byHeight.set(side(f), f);
   }
   const qualities = [...byHeight.entries()]
     .sort((a, b) => b[0] - a[0])
@@ -296,19 +314,27 @@ async function handle(msg) {
       'download:GLP|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s',
       '--print',
       'after_move:GLPFILE|%(filepath)s',
+      '--print',
+      'after_move:GLPRES|%(width)s|%(height)s',
       '--no-simulate',
       '-P',
       downloads,
       '-o',
-      '%(title).150B [%(id)s].%(ext)s',
+      // Each quality gets its own file: saving 720p after 1080p must not return the 1080p file
+      `%(title).150B [%(id)s]${outSuffix(msg.choice ?? {})}.%(ext)s`,
       ...formatFor(msg.choice ?? {}),
       msg.url,
     ];
     let part = 0;
     let lastPct = -1;
     let file = '';
+    let res = null;
     const p = run(args, (line) => {
       if (line.startsWith('GLPFILE|')) file = line.slice(8).trim();
+      else if (line.startsWith('GLPRES|')) {
+        const [, w, h] = line.split('|').map(Number);
+        if (h) res = { width: w || null, height: h };
+      }
       else if (line.startsWith('GLP|')) {
         const [, status, done, total, estimate, speed, eta] = line.split('|');
         const t = Number(total) || Number(estimate) || 0;
@@ -329,14 +355,16 @@ async function handle(msg) {
         if (recent && Date.now() - recent.t < 120000) file = path.join(downloads, recent.n);
       }
       if (!file) throw new Error('yt-dlp finished without saving a file (YouTube may have offered no matching format).');
-      send({ type: 'done', id: msg.id, file, bytes: fs.existsSync(file) ? fs.statSync(file).size : null });
+      // The quality actually saved, so the panel can say when it differs from the one picked
+      const got = res ? Math.min(res.width || res.height, res.height) : null;
+      send({ type: 'done', id: msg.id, file, bytes: fs.existsSync(file) ? fs.statSync(file).size : null, height: got, asked: Number(msg.choice?.height) || null });
     } finally {
       jobs.delete(msg.id);
     }
     return;
   }
   if (msg.type === 'cancel') {
-    jobs.get(msg.jobId)?.kill();
+    stop(jobs.get(msg.jobId));
     return send({ type: 'cancelled', id: msg.id, jobId: msg.jobId });
   }
   if (msg.type === 'reveal') {

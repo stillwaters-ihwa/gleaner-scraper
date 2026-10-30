@@ -5,7 +5,7 @@ import { extractItems, findLists, isVisible, itemsSignature, listFromElement, ty
 import { cancelPick, clearHighlight, highlight, pick, pickElement } from '@/lib/dom/overlay';
 import { designSpec, grabComponent, pageForAi, pageStructure, selectedQuote } from '@/lib/capture/page';
 import { safeQueryAll, uniqueSelector } from '@/lib/dom/selector';
-import { extractCards, findNextControl, findPageNumber, findProductList } from '@/lib/dom/cards';
+import { extractCards, findNextControl, findPageNumber, findProductList, pagerAtEnd } from '@/lib/dom/cards';
 import { currentPageNumber, formGoto, formPager, pageHealth } from '@/lib/dom/health';
 import { extractProduct } from '@/lib/product';
 import { imagesWithProducts } from '@/lib/dom/imageContext';
@@ -18,6 +18,7 @@ import { TECH_GLOBALS } from '@/lib/web/tech';
 import { htmlTables, pageLinks } from '@/lib/dom/pageData';
 import { expandTruncated, limitedView, loadMore, newestFirst, scrollPoint } from '@/lib/dom/more';
 import { hasStreamedVideo, scanPage } from '@/lib/video/detect';
+import { isSellerInventory, sellerListings, sellerNextPage, sellerSignature } from '@/lib/dom/sellerCentral';
 
 export default defineUnlistedScript(() => {
   const g = globalThis as any;
@@ -78,6 +79,9 @@ export default defineUnlistedScript(() => {
     findNext: () => findNextControl(),
     findNextControl: () => findNextControl(),
     findPageNumber: (n: number) => findPageNumber(n),
+    pagerAtEnd: () => pagerAtEnd(),
+    // The list's items without the address, to tell when new results have been drawn
+    cardsSignature: (itemSelector: string) => itemsSignature(itemSelector).replace(/\|[^|]*$/, ''),
 
     // Product grids and product pages
     findProductList: () => findProductList(),
@@ -194,5 +198,10 @@ export default defineUnlistedScript(() => {
     images: () => imagesWithProducts(),
     openThumbnails: (max?: number) => openThumbnails(max),
     variantPictures: () => variantPictures(),
+    // Seller Central, Manage All Inventory: the seller's own listings
+    sellerInventory: () => isSellerInventory(document),
+    sellerListings: () => sellerListings(document),
+    sellerNextPage: () => sellerNextPage(document),
+    sellerSignature: () => sellerSignature(document),
   };
 });

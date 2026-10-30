@@ -4,7 +4,8 @@
 import { findImages, imgSrc, type ImageInfo } from './doc';
 import { safeQueryAll } from './selector';
 import { cardProduct, findProductList } from './cards';
-import { extractProduct, type Product } from '../product';
+import { extractProduct, isAmazon, type Product } from '../product';
+import { amazonGallery } from '../amazon';
 import { extractVariants } from '../variants';
 
 const OTHER_PRODUCTS = '[class*="related" i], [class*="recommend" i], [class*="upsell" i], [class*="cross-sell" i], [class*="similar" i], [class*="also-" i], [id*="related" i], [id*="recommend" i]';
@@ -47,6 +48,14 @@ export function withPageProduct(images: ImageInfo[], doc: Document, url: string,
     }
   }
   if (!p.title || p.error || !(p.price || p.sku || p.gtin || p.part_number || p.asin)) return images;
+  // Amazon: the shown variant's full gallery (hi-res) from the page's own data, as this product's pictures
+  if (isAmazon(url)) {
+    for (const src of amazonGallery(doc)) {
+      const img = images.find((i) => i.src === src) ?? (images.push({ src, alt: p.title ?? '', width: 0, height: 0, page: url }), images[images.length - 1]);
+      tag(img, p);
+    }
+    return images;
+  }
   const bySrc = new Map(images.map((i) => [i.src, i]));
   const zone = galleryZone(doc, live);
   if (zone) {

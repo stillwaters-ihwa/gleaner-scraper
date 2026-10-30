@@ -33,23 +33,26 @@ New-Item -ItemType Directory -Force $dest | Out-Null
 Copy-Item (Join-Path $src 'gleaner-host.mjs') $dest -Force
 Set-Content -Path (Join-Path $dest 'gleaner-host.cmd') -Encoding ascii -Value "@echo off`r`n`"$node`" `"%~dp0gleaner-host.mjs`" %*"
 $downloads = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path
-@{ 'yt-dlp' = $ytdlp; ffmpeg = $ffmpeg; downloads = $downloads } | ConvertTo-Json | Set-Content -Path (Join-Path $dest 'config.json') -Encoding utf8
+# Written without a byte-order mark: Node and Chrome read these files as plain JSON
+function WriteJson($obj, $file) { [IO.File]::WriteAllText($file, ($obj | ConvertTo-Json), (New-Object Text.UTF8Encoding $false)) }
+WriteJson @{ 'yt-dlp' = $ytdlp; ffmpeg = $ffmpeg; downloads = $downloads } (Join-Path $dest 'config.json')
 
 # Allowed extensions: this folder's ID, one given on the command line, and any set up before
 $manifestPath = Join-Path $dest "$name.json"
-$ids = @(IdForPath $extDir)
+# This folder's ID, and the standard installed copy's (the installer puts Gleaner there)
+$ids = @((IdForPath $extDir), (IdForPath (Join-Path $env:LOCALAPPDATA 'Gleaner\extension')))
 if ($ExtensionId) { $ids += $ExtensionId.Trim() }
 if (Test-Path $manifestPath) {
   try { $ids += (Get-Content $manifestPath -Raw | ConvertFrom-Json).allowed_origins | ForEach-Object { $_ -replace '^chrome-extension://|/$', '' } } catch {}
 }
 $ids = $ids | Where-Object { $_ -match '^[a-p]{32}$' } | Select-Object -Unique
-[ordered]@{
+WriteJson ([ordered]@{
   name = $name
   description = 'Gleaner YouTube helper (runs yt-dlp)'
   path = 'gleaner-host.cmd'
   type = 'stdio'
   allowed_origins = @($ids | ForEach-Object { "chrome-extension://$_/" })
-} | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
+}) $manifestPath
 
 foreach ($key in @('HKCU:\Software\Google\Chrome\NativeMessagingHosts', 'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts', 'HKCU:\Software\Chromium\NativeMessagingHosts', 'HKCU:\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts')) {
   New-Item -Path "$key\$name" -Force | Out-Null

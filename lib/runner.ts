@@ -1,5 +1,6 @@
 // Runs a job over many URLs with limited concurrency, either by fetching the HTML
 // (fast, no JavaScript) or by loading each URL in a background tab (slow, renders JavaScript).
+import { responseText } from './charset';
 import { call, sleep, withBackgroundTab } from './tab';
 
 export type LoadMode = 'auto' | 'fetch' | 'tab';
@@ -19,7 +20,7 @@ export async function fetchDocument(url: string, signal?: AbortSignal): Promise<
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const type = res.headers.get('content-type') ?? '';
   if (type && !/html|xml|text\/plain/i.test(type)) throw new Error(`Not a web page (${type.split(';')[0]})`);
-  const html = await res.text();
+  const html = await responseText(res);
   const doc = new DOMParser().parseFromString(html, 'text/html');
   // Make relative links resolve against the page, not the extension
   const base = doc.createElement('base');

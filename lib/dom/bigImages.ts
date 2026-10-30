@@ -49,7 +49,8 @@ function isThumb(el: HTMLImageElement): boolean {
   if (!el.complete || !el.naturalWidth || !isVisible(el)) return false;
   const r = el.getBoundingClientRect();
   const long = Math.max(r.width, r.height);
-  if (long < 30 || long > 400 || Math.min(r.width, r.height) < 24) return false;
+  // Thumbnails are small: the main gallery picture (often 300-500 px on screen) isn't one
+  if (long < 30 || long > 220 || Math.min(r.width, r.height) < 24) return false;
   if (side(el) >= 1200) return false; // already big
   if (el.closest(CHROME) || leavesPage(el) || linkedBig(el, location.href)) return false;
   return true;
@@ -58,8 +59,27 @@ function isThumb(el: HTMLImageElement): boolean {
 /** Pictures shown now, at their current address. */
 const snapshot = () => new Map((Array.from(document.images) as HTMLImageElement[]).map((i) => [i, shown(i)]));
 
-/** The biggest picture that appeared or changed since `before`, once it has loaded. */
-async function bigger(thumb: HTMLImageElement, before: Map<HTMLImageElement, string>, ms: number): Promise<string> {
+/** Lightboxes that don't announce themselves as dialogs (Magnific, Fancybox, PhotoSwipe, Lightbox2...). */
+const LIGHTBOX = '.mfp-wrap, .mfp-ready, .fancybox-container, .fancybox__container, .pswp--open, .lightbox, .lb-outerContainer, .glightbox-container, .lg-outer, [class*="lightbox" i][style*="block"], [class*="modal" i].show, [class*="modal" i].is-open';
+const openLightbox = (): Element | null => openDialog() ?? (Array.from(document.querySelectorAll(LIGHTBOX)) as HTMLElement[]).find((e) => isVisible(e)) ?? null;
+
+/** The gallery around a thumbnail: the nearest block that also holds a picture shown bigger. */
+function galleryOf(thumb: HTMLImageElement): Element {
+  const r = thumb.getBoundingClientRect();
+  const want = Math.max(r.width, r.height) * 1.8;
+  for (let el = thumb.parentElement, d = 0; el && el !== document.body && d < 8; el = el.parentElement, d++) {
+    const big = (Array.from(el.querySelectorAll('img')) as HTMLImageElement[]).some((i) => {
+      const b = i.getBoundingClientRect();
+      return i !== thumb && Math.max(b.width, b.height) >= want;
+    });
+    if (big) return el;
+  }
+  return thumb.parentElement ?? document.body;
+}
+
+/** The biggest picture that appeared or changed since `before` in the thumbnail's own gallery (or a
+ *  lightbox it opened), once it has loaded. Pictures elsewhere on the page don't count. */
+async function bigger(thumb: HTMLImageElement, before: Map<HTMLImageElement, string>, ms: number, gallery: Element = document.body): Promise<string> {
   const need = Math.max(side(thumb) * 1.3, 400);
   const end = Date.now() + ms;
   let pending = false;
@@ -73,6 +93,8 @@ async function bigger(thumb: HTMLImageElement, before: Map<HTMLImageElement, str
         pending = true;
         continue;
       }
+      const box = openLightbox();
+      if (!gallery.contains(i) && !(box && box.contains(i))) continue;
       if (side(i) >= need && isVisible(i) && (!best || side(i) > side(best))) best = i;
     }
     if (best && !pending) return shown(best);
@@ -84,14 +106,14 @@ async function bigger(thumb: HTMLImageElement, before: Map<HTMLImageElement, str
 /** Close a lightbox the click opened: Escape, then its close button. */
 async function close(dialogBefore: Element | null) {
   const open = () => {
-    const d = openDialog();
+    const d = openLightbox();
     return d && d !== dialogBefore ? d : null;
   };
   for (const t of [document.activeElement ?? document.body, document]) t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
   await wait(250);
   const d = open();
   if (!d) return;
-  const btn = (Array.from(d.querySelectorAll('button, [role="button"], a')) as HTMLElement[]).find((b) => /close|닫기|閉じる|schließen|fermer|cerrar/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.title} ${b.className} ${b.innerText}`) || /^[×✕✖x]$/i.test(b.innerText.trim()));
+  const btn = (Array.from(d.querySelectorAll('button, [role="button"], a, .mfp-close, .fancybox-close, .pswp__button--close, .lb-close')) as HTMLElement[]).find((b) => /close|닫기|閉じる|schließen|fermer|cerrar/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.title} ${b.className} ${b.innerText}`) || /^[×✕✖x]$/i.test(b.innerText.trim()));
   btn?.click();
   await wait(250);
 }
@@ -113,9 +135,24 @@ export async function openThumbnails(max = 40, budgetMs = 60000): Promise<{ thum
   addEventListener('click', stay);
   addEventListener('submit', stay);
   try {
-    const thumbs = (Array.from(document.images) as HTMLImageElement[]).filter(isThumb).slice(0, max);
+    // Only thumbnails in a strip of two or more next to a bigger picture: a gallery
+    const all = (Array.from(document.images) as HTMLImageElement[]).filter(isThumb);
+    const groups = new Map<Element, HTMLImageElement[]>();
+    for (const t of all) {
+      const g = galleryOf(t);
+      groups.set(g, [...(groups.get(g) ?? []), t]);
+    }
+    const thumbs = [...groups.entries()].filter(([g, list]) => list.length >= 2 && g !== document.body).flatMap(([, list]) => list).slice(0, max);
+    // Per gallery: after 3 thumbnails that showed nothing bigger, the rest of that gallery won't either
+    const tries = new Map<Element, { n: number; hits: number }>();
     for (const el of thumbs) {
       if (Date.now() - start > budgetMs) break;
+      const g = galleryOf(el);
+      const t = tries.get(g) ?? { n: 0, hits: 0 };
+      tries.set(g, t);
+      if (t.n >= 3 && !t.hits) continue;
+      t.n++;
+      const found = out.length;
       // The same address the picture scan gives this picture
       const thumb = imgSrc(el, location.href, true);
       if (done.has(thumb) || !el.isConnected) continue;
@@ -123,7 +160,7 @@ export async function openThumbnails(max = 40, budgetMs = 60000): Promise<{ thum
       el.scrollIntoView({ block: 'center', inline: 'center' });
       await wait(60);
       const before = snapshot();
-      const dialogBefore = openDialog();
+      const dialogBefore = openLightbox();
       const r = el.getBoundingClientRect();
       const x = r.left + r.width / 2;
       const y = r.top + r.height / 2;
@@ -135,9 +172,10 @@ export async function openThumbnails(max = 40, budgetMs = 60000): Promise<{ thum
       hit.dispatchEvent(new MouseEvent('mouseenter', { ...opts, bubbles: false }));
       for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup'] as const) hit.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, opts) : new MouseEvent(type, opts));
       hit.click();
-      const big = await bigger(el, before, 2000);
+      const big = await bigger(el, before, 1500, galleryOf(el));
       if (big && big !== thumb) out.push({ thumb, big });
-      if (openDialog() && openDialog() !== dialogBefore) await close(dialogBefore);
+      if (out.length > found) t.hits++;
+      if (openLightbox() && openLightbox() !== dialogBefore) await close(dialogBefore);
     }
   } finally {
     removeEventListener('click', stay);
